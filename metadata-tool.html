@@ -9,6 +9,19 @@
 
 <!-- lib EXIF ultra légère -->
 <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+<style>/* Style pour les champs d'édition de metadata */
+#author, #desc, #copyright, #comment {
+    width: 100%;                  /* Remplit la largeur du conteneur */
+    padding: 10px 15px;           /* Padding confortable */
+    border: 2px solid var(--accent); /* Bord coloré avec l'accent */
+    border-radius: 12px;          /* Bords arrondis */
+    background-color: #0d1117;    /* Fond sombre, comme le pre */
+    color: #fff;                  /* Texte blanc */
+    font-size: 15px;              /* Taille lisible */
+    transition: all 0.3s ease;    /* Transition douce au focus */
+    outline: none;                /* Supprime le contour par défaut */
+}
+</style>
 </head>
 
 <body>
