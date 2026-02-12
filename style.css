@@ -130,3 +130,17 @@ button {
     transition: background 0.2s;
 }
 button:hover { background-color: var(--accent-hover); }
+
+
+/* Style pour les champ mot de passe */
+#password {
+    width: 100%;               /* Prend toute la largeur du conteneur */
+    padding: 10px 15px;        /* Intérieur confortable */
+    border: 2px solid var(--accent); /* Bord coloré cohérent */
+    border-radius: 12px;       /* Bords arrondis */
+    background-color: #111;    /* Fond sombre, harmonisé avec le thème */
+    color: #fff;               /* Texte blanc */
+    font-size: 16px;           /* Taille confortable */
+    transition: all 0.3s ease; /* Animation douce au focus */
+    outline: none;             /* Supprime le contour par défaut */
+}
