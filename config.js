@@ -10,8 +10,8 @@ const siteConfig = {
     tools: [
         { 
             title: "Mon Portfolio", 
-            desc: "Accéder à mon site principal tsn.red", 
-            url: "https://tsn.red", 
+            desc: "Accéder à mon site principal portfolio-58.tsn.red", 
+            url: "https://portfolio-58.tsn.red/", 
             icon: "fa-solid fa-globe", 
             external: true,
             highlight: true 
@@ -67,3 +67,4 @@ const siteConfig = {
     ]
 
 };
+
