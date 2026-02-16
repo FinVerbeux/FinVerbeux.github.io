@@ -53,7 +53,7 @@ const siteConfig = {
             icon: "fa-solid fa-image"
         },
         { 
-            title: "URL Steganography Tool", 
+            title: "Steganography Tool", 
             desc: "Cache ou récupère des messages dans PNG/BMP", 
             url: "steganography.html", 
             icon: "fa-solid fa-user-secret" 
@@ -67,4 +67,5 @@ const siteConfig = {
     ]
 
 };
+
 
