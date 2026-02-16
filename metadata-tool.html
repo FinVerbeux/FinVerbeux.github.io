@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Metadata Viewer</title>
 
 <link rel="stylesheet" href="style.css">
@@ -9,17 +10,198 @@
 
 <!-- lib EXIF ultra légère -->
 <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
-<style>/* Style pour les champs d'édition de metadata */
+<style>
+/* Champs d'édition */
 #author, #desc, #copyright, #comment {
-    width: 100%;                  /* Remplit la largeur du conteneur */
-    padding: 10px 15px;           /* Padding confortable */
-    border: 2px solid var(--accent); /* Bord coloré avec l'accent */
-    border-radius: 12px;          /* Bords arrondis */
-    background-color: #0d1117;    /* Fond sombre, comme le pre */
-    color: #fff;                  /* Texte blanc */
-    font-size: 15px;              /* Taille lisible */
-    transition: all 0.3s ease;    /* Transition douce au focus */
-    outline: none;                /* Supprime le contour par défaut */
+    width: 100%;
+    padding: 10px 15px;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    background-color: #0d1117;
+    color: #fff;
+    font-size: 15px;
+    transition: all 0.3s ease;
+    outline: none;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+#author:focus, #desc:focus, #copyright:focus, #comment:focus {
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 10px var(--accent);
+}
+
+/* Drop zone améliorée */
+#drop {
+    border: 2px dashed var(--accent);
+    padding: 40px;
+    border-radius: 12px;
+    text-align: center;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+    background: var(--card-bg);
+}
+
+#drop:hover, #drop.dragover {
+    border-color: var(--accent-hover);
+    background: #1b1f27;
+    transform: scale(1.02);
+}
+
+/* Preview améliorée */
+#preview {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    display: none;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+    border-bottom: 2px solid var(--border);
+}
+
+.tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+
+.tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab:hover {
+    color: var(--accent-hover);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Stats cards */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--accent);
+    margin: 5px 0;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* GPS Map */
+#mapContainer {
+    width: 100%;
+    height: 300px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 15px;
+    border: 1px solid var(--border);
+}
+
+/* Thumbnail strip */
+.thumbnail-strip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 15px;
+}
+
+.thumbnail {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.thumbnail:hover {
+    border-color: var(--accent);
+    transform: scale(1.05);
+}
+
+.thumbnail.active {
+    border-color: var(--accent);
+}
+
+/* Comparison mode */
+.comparison-view {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.comparison-item {
+    text-align: center;
+}
+
+.comparison-item img {
+    max-width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+
+/* Badge */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    margin: 2px;
+}
+
+.badge-info { background: #0099ff; color: white; }
+.badge-warning { background: #ffaa00; color: black; }
+.badge-danger { background: #ff4444; color: white; }
+.badge-success { background: #00bb00; color: white; }
+
+/* Histogram canvas */
+#histogram {
+    width: 100%;
+    height: 200px;
+    background: #0d1117;
+    border-radius: 10px;
+    margin-top: 15px;
 }
 </style>
 </head>
@@ -32,147 +214,640 @@
     </a>
 </div>
 
-<div style="max-width:1000px;margin:0 auto;padding:20px;">
+<div style="max-width:1200px;margin:0 auto;padding:20px;">
 
 <h1><i class="fa-solid fa-image"></i> Metadata Viewer</h1>
-<p class="subtitle">Analyse, édite ou supprime les métadonnées d'une image</p>
+<p class="subtitle">Analyse avancée des métadonnées avec géolocalisation et histogramme</p>
 
 <!-- DROP -->
-<div id="drop" style="
-border:2px dashed var(--accent);
-padding:30px;
-border-radius:12px;
-text-align:center;
-cursor:pointer;
-margin-bottom:20px;">
-<i class="fa-solid fa-upload"></i> Glisse une image ou clique
-<input type="file" id="fileInput" hidden accept="image/*">
+<div id="drop">
+    <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;display:block;margin-bottom:10px;"></i>
+    Glisse une ou plusieurs images ou clique ici
+    <div style="font-size:12px;margin-top:10px;opacity:0.7;">PNG, JPEG, WebP, HEIC supportés</div>
+    <input type="file" id="fileInput" hidden accept="image/*" multiple>
 </div>
 
-<img id="preview" style="max-width:100%;border-radius:10px;margin-bottom:20px;">
+<!-- Thumbnails pour multi-upload -->
+<div id="thumbnailStrip" class="thumbnail-strip" style="display:none;"></div>
 
-<!-- META OUTPUT -->
-<pre id="metaOutput" style="
-background:#0d1117;
-padding:15px;
-border-radius:10px;
-max-height:250px;
-overflow:auto;"></pre>
+<!-- Preview principale -->
+<img id="preview">
 
-<!-- EDIT -->
-<div style="display:grid;gap:10px;margin-top:15px;">
-<input id="author" placeholder="Auteur">
-<input id="desc" placeholder="Description">
-<input id="copyright" placeholder="Copyright">
-<input id="comment" placeholder="Commentaire">
+<!-- Stats cards -->
+<div id="statsCards" style="display:none;">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Résolution</div>
+            <div class="stat-value" id="resolution">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Taille</div>
+            <div class="stat-value" id="fileSize">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Format</div>
+            <div class="stat-value" id="format">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Profondeur</div>
+            <div class="stat-value" id="colorDepth">-</div>
+        </div>
+    </div>
 </div>
 
-<div style="display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;">
-<button onclick="saveImage()"><i class="fa-solid fa-floppy-disk"></i> Télécharger modifié</button>
-<button onclick="stripMeta()" class="btn-secondary"><i class="fa-solid fa-broom"></i> Supprimer metadata</button>
+<!-- Tabs -->
+<div id="tabsContainer" style="display:none;">
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('metadata')"><i class="fa-solid fa-info-circle"></i> Métadonnées</button>
+        <button class="tab" onclick="switchTab('edit')"><i class="fa-solid fa-edit"></i> Édition</button>
+        <button class="tab" onclick="switchTab('gps')"><i class="fa-solid fa-location-dot"></i> GPS</button>
+        <button class="tab" onclick="switchTab('analysis')"><i class="fa-solid fa-chart-bar"></i> Analyse</button>
+        <button class="tab" onclick="switchTab('security')"><i class="fa-solid fa-shield"></i> Sécurité</button>
+    </div>
+
+    <!-- Tab: Metadata -->
+    <div id="tab-metadata" class="tab-content active">
+        <h3>📋 Métadonnées complètes</h3>
+        <pre id="metaOutput" style="background:#0d1117;padding:15px;border-radius:10px;max-height:400px;overflow:auto;"></pre>
+    </div>
+
+    <!-- Tab: Edit -->
+    <div id="tab-edit" class="tab-content">
+        <h3>✏️ Éditer les métadonnées</h3>
+        <div style="display:grid;gap:10px;margin-top:15px;">
+            <input id="author" placeholder="Auteur / Photographe">
+            <input id="desc" placeholder="Description">
+            <input id="copyright" placeholder="Copyright">
+            <textarea id="comment" placeholder="Commentaire" style="min-height:80px;resize:vertical;"></textarea>
+        </div>
+        <div style="margin-top:15px;color:var(--text-muted);font-size:12px;">
+            ⚠️ Note: L'édition de métadonnées nécessite un traitement côté serveur. 
+            Cette démo permet uniquement la suppression de métadonnées.
+        </div>
+    </div>
+
+    <!-- Tab: GPS -->
+    <div id="tab-gps" class="tab-content">
+        <h3>📍 Géolocalisation</h3>
+        <div id="gpsInfo" style="margin-bottom:15px;"></div>
+        <div id="mapContainer"></div>
+    </div>
+
+    <!-- Tab: Analysis -->
+    <div id="tab-analysis" class="tab-content">
+        <h3>📊 Analyse d'image</h3>
+        <canvas id="histogram"></canvas>
+        <div id="analysisInfo" style="margin-top:15px;"></div>
+    </div>
+
+    <!-- Tab: Security -->
+    <div id="tab-security" class="tab-content">
+        <h3>🔒 Sécurité & Confidentialité</h3>
+        <div id="securityInfo"></div>
+    </div>
 </div>
 
-<div id="status" style="margin-top:10px;color:var(--accent);"></div>
+<!-- Actions -->
+<div id="actionsBar" style="display:none;flex-wrap:wrap;gap:10px;margin-top:20px;">
+    <button onclick="downloadOriginal()"><i class="fa-solid fa-download"></i> Télécharger original</button>
+    <button onclick="stripMeta()" class="btn-secondary"><i class="fa-solid fa-broom"></i> Supprimer metadata</button>
+    <button onclick="downloadClean()"><i class="fa-solid fa-floppy-disk"></i> Télécharger nettoyé</button>
+    <button onclick="copyHash()" class="btn-secondary"><i class="fa-solid fa-fingerprint"></i> Copier SHA-256</button>
+    <button onclick="exportJSON()" class="btn-secondary"><i class="fa-solid fa-file-code"></i> Export JSON</button>
+</div>
+
+<div id="status" style="margin-top:15px;color:var(--accent);"></div>
 
 </div>
 
 <script>
-const input=document.getElementById("fileInput");
-const drop=document.getElementById("drop");
-const preview=document.getElementById("preview");
-const metaOutput=document.getElementById("metaOutput");
-const status=document.getElementById("status");
+const input = document.getElementById("fileInput");
+const drop = document.getElementById("drop");
+const preview = document.getElementById("preview");
+const metaOutput = document.getElementById("metaOutput");
+const status = document.getElementById("status");
+const thumbnailStrip = document.getElementById("thumbnailStrip");
 
-let currentFile;
+let currentFile = null;
+let currentFiles = [];
+let currentFileIndex = 0;
+let currentHash = "";
+let exifData = {};
+let cleanedImage = null;
 
+// ----------- TAB SWITCHING -----------
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    event.target.classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+    
+    // Load map si GPS tab
+    if(tabName === 'gps' && exifData.GPSLatitude) {
+        loadMap();
+    }
+    
+    // Draw histogram si Analysis tab
+    if(tabName === 'analysis') {
+        drawHistogram();
+    }
+}
 
-/* ======================
-   DRAG DROP
-====================== */
-drop.onclick=()=>input.click();
-drop.ondragover=e=>e.preventDefault();
-drop.ondrop=e=>{
+// ----------- DRAG DROP -----------
+drop.onclick = () => input.click();
+
+drop.ondragover = (e) => {
     e.preventDefault();
-    loadFile(e.dataTransfer.files[0]);
+    drop.classList.add('dragover');
 };
-input.onchange=e=>loadFile(e.target.files[0]);
 
+drop.ondragleave = (e) => {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+};
 
-/* ======================
-   LOAD
-====================== */
-async function loadFile(file){
-    currentFile=file;
+drop.ondrop = (e) => {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if(files.length > 0) {
+        currentFiles = files;
+        loadMultipleFiles(files);
+    }
+};
 
-    preview.src=URL.createObjectURL(file);
+input.onchange = (e) => {
+    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+    if(files.length > 0) {
+        currentFiles = files;
+        loadMultipleFiles(files);
+    }
+};
 
-    const hash=await sha256(file);
-
-    EXIF.getData(file,function(){
-        const all=EXIF.getAllTags(this);
-
-        let text="--- Infos générales ---\n";
-        text+=`Nom: ${file.name}\n`;
-        text+=`Type: ${file.type}\n`;
-        text+=`Taille: ${(file.size/1024).toFixed(1)} KB\n`;
-        text+=`SHA-256: ${hash}\n\n`;
-
-        text+="--- EXIF ---\n";
-
-        for(let k in all)
-            text+=`${k}: ${all[k]}\n`;
-
-        metaOutput.textContent=text;
-
-        document.getElementById("author").value=all.Artist||"";
-        document.getElementById("desc").value=all.ImageDescription||"";
-        document.getElementById("copyright").value=all.Copyright||"";
-    });
-
-    status.innerText="Image chargée ✔";
+// ----------- LOAD MULTIPLE FILES -----------
+function loadMultipleFiles(files) {
+    if(files.length === 1) {
+        loadFile(files[0]);
+        thumbnailStrip.style.display = 'none';
+    } else {
+        // Show thumbnails
+        thumbnailStrip.style.display = 'flex';
+        thumbnailStrip.innerHTML = '';
+        
+        files.forEach((file, index) => {
+            const img = document.createElement('img');
+            img.className = 'thumbnail';
+            if(index === 0) img.classList.add('active');
+            img.src = URL.createObjectURL(file);
+            img.onclick = () => {
+                currentFileIndex = index;
+                loadFile(file);
+                document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
+                img.classList.add('active');
+            };
+            thumbnailStrip.appendChild(img);
+        });
+        
+        loadFile(files[0]);
+    }
 }
 
-
-/* ======================
-   STRIP
-====================== */
-function stripMeta(){
-    const canvas=document.createElement("canvas");
-    const ctx=canvas.getContext("2d");
-
-    const img=new Image();
-    img.onload=()=>{
-        canvas.width=img.width;
-        canvas.height=img.height;
-        ctx.drawImage(img,0,0);
-
-        preview.src=canvas.toDataURL("image/png");
-
-        status.innerText="Metadata supprimée ✔";
+// ----------- LOAD FILE -----------
+async function loadFile(file) {
+    currentFile = file;
+    
+    // Show UI
+    preview.style.display = 'block';
+    preview.src = URL.createObjectURL(file);
+    document.getElementById('statsCards').style.display = 'block';
+    document.getElementById('tabsContainer').style.display = 'block';
+    document.getElementById('actionsBar').style.display = 'flex';
+    
+    // Calculate hash
+    currentHash = await sha256(file);
+    
+    // Get image dimensions
+    const img = new Image();
+    img.onload = () => {
+        document.getElementById('resolution').textContent = `${img.width}×${img.height}`;
+        document.getElementById('colorDepth').textContent = '24-bit';
     };
-    img.src=preview.src;
+    img.src = preview.src;
+    
+    // File stats
+    document.getElementById('fileSize').textContent = formatBytes(file.size);
+    document.getElementById('format').textContent = file.type.split('/')[1].toUpperCase();
+    
+    // Extract EXIF
+    EXIF.getData(file, function() {
+        exifData = EXIF.getAllTags(this);
+        displayMetadata();
+        displayGPS();
+        displaySecurity();
+    });
+    
+    status.innerText = `✔ ${file.name} chargé`;
 }
 
+// ----------- DISPLAY METADATA -----------
+function displayMetadata() {
+    let text = "=== 📄 Informations générales ===\n\n";
+    text += `Nom: ${currentFile.name}\n`;
+    text += `Type: ${currentFile.type}\n`;
+    text += `Taille: ${formatBytes(currentFile.size)}\n`;
+    text += `SHA-256: ${currentHash}\n\n`;
+    
+    text += "=== 📸 Métadonnées EXIF ===\n\n";
+    
+    if(Object.keys(exifData).length === 0) {
+        text += "Aucune métadonnée EXIF trouvée.\n";
+    } else {
+        // Grouped metadata
+        const groups = {
+            'Appareil': ['Make', 'Model', 'Software'],
+            'Paramètres': ['FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'Flash'],
+            'Date': ['DateTime', 'DateTimeOriginal', 'DateTimeDigitized'],
+            'Géolocalisation': ['GPSLatitude', 'GPSLongitude', 'GPSAltitude'],
+            'Autre': []
+        };
+        
+        for(let group in groups) {
+            const keys = groups[group];
+            let hasData = false;
+            let groupText = `--- ${group} ---\n`;
+            
+            keys.forEach(key => {
+                if(exifData[key]) {
+                    groupText += `${key}: ${formatEXIFValue(key, exifData[key])}\n`;
+                    hasData = true;
+                }
+            });
+            
+            if(hasData) text += groupText + "\n";
+        }
+        
+        // Other fields
+        for(let k in exifData) {
+            const isGrouped = Object.values(groups).flat().includes(k);
+            if(!isGrouped && k !== 'thumbnail' && k !== 'MakerNote') {
+                text += `${k}: ${formatEXIFValue(k, exifData[k])}\n`;
+            }
+        }
+    }
+    
+    metaOutput.textContent = text;
+    
+    // Fill edit fields
+    document.getElementById("author").value = exifData.Artist || "";
+    document.getElementById("desc").value = exifData.ImageDescription || "";
+    document.getElementById("copyright").value = exifData.Copyright || "";
+    document.getElementById("comment").value = exifData.UserComment || "";
+}
 
-/* ======================
-   SAVE (PNG clean)
-====================== */
-function saveImage(){
-    const a=document.createElement("a");
-    a.href=preview.src;
-    a.download="clean_image.png";
+function formatEXIFValue(key, value) {
+    if(key === 'ExposureTime' && typeof value === 'number') {
+        return value < 1 ? `1/${Math.round(1/value)}s` : `${value}s`;
+    }
+    if(key === 'FNumber' && typeof value === 'number') {
+        return `f/${value}`;
+    }
+    if(key === 'FocalLength') {
+        return `${value}mm`;
+    }
+    if(key === 'GPSLatitude' || key === 'GPSLongitude') {
+        return convertDMSToDD(value);
+    }
+    if(Array.isArray(value)) {
+        return value.join(', ');
+    }
+    return value;
+}
+
+function convertDMSToDD(dms) {
+    if(!Array.isArray(dms) || dms.length !== 3) return dms;
+    const [d, m, s] = dms;
+    return (d + m/60 + s/3600).toFixed(6);
+}
+
+// ----------- GPS -----------
+function displayGPS() {
+    const gpsInfo = document.getElementById('gpsInfo');
+    
+    if(!exifData.GPSLatitude || !exifData.GPSLongitude) {
+        gpsInfo.innerHTML = '<span class="badge badge-warning">Aucune donnée GPS trouvée</span>';
+        return;
+    }
+    
+    const lat = convertDMSToDD(exifData.GPSLatitude);
+    const lon = convertDMSToDD(exifData.GPSLongitude);
+    const latRef = exifData.GPSLatitudeRef || 'N';
+    const lonRef = exifData.GPSLongitudeRef || 'E';
+    
+    const finalLat = latRef === 'S' ? -lat : lat;
+    const finalLon = lonRef === 'W' ? -lon : lon;
+    
+    gpsInfo.innerHTML = `
+        <div style="background:var(--card-bg);padding:15px;border-radius:10px;border:1px solid var(--border);">
+            <div style="margin-bottom:10px;">
+                <strong>Coordonnées:</strong> ${finalLat}, ${finalLon}
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <a href="https://www.google.com/maps?q=${finalLat},${finalLon}" target="_blank" class="external-btn">
+                    <i class="fa-solid fa-map"></i> Google Maps
+                </a>
+                <a href="https://www.openstreetmap.org/?mlat=${finalLat}&mlon=${finalLon}&zoom=15" target="_blank" class="external-btn">
+                    <i class="fa-solid fa-map-location"></i> OpenStreetMap
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+function loadMap() {
+    if(!exifData.GPSLatitude || !exifData.GPSLongitude) return;
+    
+    const lat = convertDMSToDD(exifData.GPSLatitude);
+    const lon = convertDMSToDD(exifData.GPSLongitude);
+    const latRef = exifData.GPSLatitudeRef || 'N';
+    const lonRef = exifData.GPSLongitudeRef || 'E';
+    
+    const finalLat = latRef === 'S' ? -lat : lat;
+    const finalLon = lonRef === 'W' ? -lon : lon;
+    
+    // Embed OpenStreetMap
+    document.getElementById('mapContainer').innerHTML = `
+        <iframe 
+            width="100%" 
+            height="300" 
+            frameborder="0" 
+            scrolling="no" 
+            marginheight="0" 
+            marginwidth="0" 
+            src="https://www.openstreetmap.org/export/embed.html?bbox=${finalLon-0.01},${finalLat-0.01},${finalLon+0.01},${finalLat+0.01}&layer=mapnik&marker=${finalLat},${finalLon}"
+            style="border-radius:10px;">
+        </iframe>
+    `;
+}
+
+// ----------- SECURITY -----------
+function displaySecurity() {
+    const securityInfo = document.getElementById('securityInfo');
+    let html = '';
+    let risks = [];
+    
+    // Check for GPS data
+    if(exifData.GPSLatitude) {
+        risks.push({
+            level: 'danger',
+            icon: 'fa-location-dot',
+            title: 'Géolocalisation détectée',
+            desc: 'Cette image contient votre position GPS exacte. Supprimez-la avant de partager.'
+        });
+    }
+    
+    // Check for camera info
+    if(exifData.Make || exifData.Model) {
+        risks.push({
+            level: 'warning',
+            icon: 'fa-camera',
+            title: 'Informations appareil',
+            desc: `Appareil: ${exifData.Make || ''} ${exifData.Model || ''}. Ces données peuvent être utilisées pour du fingerprinting.`
+        });
+    }
+    
+    // Check for software
+    if(exifData.Software) {
+        risks.push({
+            level: 'info',
+            icon: 'fa-code',
+            title: 'Logiciel détecté',
+            desc: `Édité avec: ${exifData.Software}`
+        });
+    }
+    
+    // Check for author
+    if(exifData.Artist || exifData.Copyright) {
+        risks.push({
+            level: 'info',
+            icon: 'fa-user',
+            title: 'Informations auteur',
+            desc: `${exifData.Artist || exifData.Copyright}`
+        });
+    }
+    
+    if(risks.length === 0) {
+        html = '<span class="badge badge-success">✓ Aucun risque de confidentialité détecté</span>';
+    } else {
+        risks.forEach(risk => {
+            html += `
+                <div style="background:var(--card-bg);padding:15px;border-radius:10px;margin-bottom:10px;border-left:4px solid ${risk.level === 'danger' ? '#ff4444' : risk.level === 'warning' ? '#ffaa00' : '#0099ff'};">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
+                        <i class="fa-solid ${risk.icon}" style="color:var(--accent);"></i>
+                        <strong>${risk.title}</strong>
+                        <span class="badge badge-${risk.level}">${risk.level === 'danger' ? 'ÉLEVÉ' : risk.level === 'warning' ? 'MOYEN' : 'INFO'}</span>
+                    </div>
+                    <div style="font-size:13px;color:var(--text-muted);">${risk.desc}</div>
+                </div>
+            `;
+        });
+        
+        html += `
+            <div style="margin-top:15px;padding:15px;background:#0d1117;border-radius:10px;">
+                <strong>💡 Recommandation:</strong> Utilisez le bouton "Supprimer metadata" pour retirer toutes ces informations avant de partager l'image en ligne.
+            </div>
+        `;
+    }
+    
+    securityInfo.innerHTML = html;
+}
+
+// ----------- HISTOGRAM -----------
+function drawHistogram() {
+    const canvas = document.getElementById('histogram');
+    const ctx = canvas.getContext('2d');
+    
+    // Create temp image
+    const img = new Image();
+    img.onload = () => {
+        // Create temp canvas
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(img, 0, 0);
+        
+        const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+        const data = imageData.data;
+        
+        // Calculate histogram
+        const red = new Array(256).fill(0);
+        const green = new Array(256).fill(0);
+        const blue = new Array(256).fill(0);
+        
+        for(let i = 0; i < data.length; i += 4) {
+            red[data[i]]++;
+            green[data[i+1]]++;
+            blue[data[i+2]]++;
+        }
+        
+        // Normalize
+        const max = Math.max(...red, ...green, ...blue);
+        
+        // Draw
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 200;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const barWidth = canvas.width / 256;
+        
+        // Draw histograms
+        for(let i = 0; i < 256; i++) {
+            const x = i * barWidth;
+            
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.fillRect(x, canvas.height - (red[i] / max * canvas.height), barWidth, red[i] / max * canvas.height);
+            
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.fillRect(x, canvas.height - (green[i] / max * canvas.height), barWidth, green[i] / max * canvas.height);
+            
+            ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+            ctx.fillRect(x, canvas.height - (blue[i] / max * canvas.height), barWidth, blue[i] / max * canvas.height);
+        }
+        
+        // Analysis
+        const avgRed = data.filter((_, i) => i % 4 === 0).reduce((a, b) => a + b, 0) / (data.length / 4);
+        const avgGreen = data.filter((_, i) => i % 4 === 1).reduce((a, b) => a + b, 0) / (data.length / 4);
+        const avgBlue = data.filter((_, i) => i % 4 === 2).reduce((a, b) => a + b, 0) / (data.length / 4);
+        
+        document.getElementById('analysisInfo').innerHTML = `
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;">
+                <div class="stat-card">
+                    <div class="stat-label">Luminosité moyenne</div>
+                    <div class="stat-value">${Math.round((avgRed + avgGreen + avgBlue) / 3)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Rouge moyen</div>
+                    <div class="stat-value" style="color:#ff4444;">${Math.round(avgRed)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Vert moyen</div>
+                    <div class="stat-value" style="color:#00ff00;">${Math.round(avgGreen)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Bleu moyen</div>
+                    <div class="stat-value" style="color:#4444ff;">${Math.round(avgBlue)}</div>
+                </div>
+            </div>
+        `;
+    };
+    img.src = preview.src;
+}
+
+// ----------- STRIP METADATA -----------
+function stripMeta() {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    
+    const img = new Image();
+    img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        cleanedImage = canvas.toDataURL("image/png");
+        preview.src = cleanedImage;
+        
+        status.innerText = "✔ Métadonnées supprimées de l'aperçu";
+        
+        // Update security tab
+        exifData = {};
+        displaySecurity();
+    };
+    img.src = preview.src;
+}
+
+// ----------- DOWNLOADS -----------
+function downloadOriginal() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(currentFile);
+    a.download = currentFile.name;
     a.click();
 }
 
-
-/* ======================
-   SHA256
-====================== */
-async function sha256(file){
-    const buf=await file.arrayBuffer();
-    const hash=await crypto.subtle.digest("SHA-256",buf);
-    return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+function downloadClean() {
+    if(!cleanedImage) {
+        alert("Veuillez d'abord supprimer les métadonnées.");
+        return;
+    }
+    
+    const a = document.createElement("a");
+    a.href = cleanedImage;
+    a.download = "clean_" + currentFile.name.replace(/\.[^.]+$/, '.png');
+    a.click();
 }
+
+function copyHash() {
+    navigator.clipboard.writeText(currentHash);
+    alert('SHA-256 copié!');
+}
+
+function exportJSON() {
+    const report = {
+        file: {
+            name: currentFile.name,
+            size: currentFile.size,
+            type: currentFile.type,
+            sha256: currentHash
+        },
+        exif: exifData,
+        timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `metadata_${currentFile.name}.json`;
+    a.click();
+}
+
+// ----------- SHA256 -----------
+async function sha256(file) {
+    const buf = await file.arrayBuffer();
+    const hash = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(hash)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Style for external buttons
+const style = document.createElement('style');
+style.textContent = `
+.external-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    text-decoration: none;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.external-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: translateY(-2px);
+}
+`;
+document.head.appendChild(style);
 </script>
 
 </body>

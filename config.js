@@ -42,15 +42,21 @@ const siteConfig = {
         },
         { 
             title: "URL Parser", 
-            desc: "Analyse, modifie et reconstruit les paramètres d’URL", 
+            desc: "Analyse, modifie et reconstruit les paramètres d'URL", 
             url: "url-parser.html", 
             icon: "fa-solid fa-link" 
         },
         { 
-            title: "Metadata Viewer", 
-            desc: "Analyse et édite les métadonnées d’une image", 
+            title: "Metadata Viewer Pro", 
+            desc: "Analyse avancée des métadonnées d'images avec GPS", 
             url: "metadata-tool.html",
             icon: "fa-solid fa-image"
+        },
+        { 
+            title: "String Extractor & Malware Analyzer", 
+            desc: "Extraction de strings et analyse de binaires avec détection d'IoCs", 
+            url: "analyzer.html",
+            icon: "fa-solid fa-microscope"
         },
         { 
             title: "Steganography Tool", 
@@ -67,5 +73,3 @@ const siteConfig = {
     ]
 
 };
-
-

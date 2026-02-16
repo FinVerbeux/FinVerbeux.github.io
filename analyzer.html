@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>String Extractor & Malware Analyzer</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+/* Drop-zone */
+.drop-zone {
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: var(--card-bg);
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 20px;
+}
+.drop-zone.dragover {
+    border-color: var(--accent-hover);
+    background-color: #1b1f27;
+    color: var(--accent);
+    transform: scale(1.02);
+}
+.drop-zone i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    display: block;
+}
+
+/* Liens externes */
+.external-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    text-decoration: none;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.external-btn:hover { 
+    background: var(--accent); 
+    color: #fff; 
+    transform: translateY(-2px);
+}
+
+/* Pre stylés */
+pre {
+    background: #0d1117;
+    padding: 15px;
+    border-radius: 10px;
+    max-height: 400px;
+    overflow: auto;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* Stats cards */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+.stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 15px;
+    text-align: center;
+}
+.stat-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--accent);
+    margin: 5px 0;
+}
+.stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+    border-bottom: 2px solid var(--border);
+}
+.tab {
+    padding: 10px 20px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+}
+.tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.tab:hover {
+    color: var(--accent-hover);
+}
+.tab-content {
+    display: none;
+}
+.tab-content.active {
+    display: block;
+}
+
+/* Badge */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    margin: 2px;
+}
+.badge-danger { background: #ff4444; color: white; }
+.badge-warning { background: #ffaa00; color: black; }
+.badge-success { background: #00bb00; color: white; }
+.badge-info { background: #0099ff; color: white; }
+
+/* Progress bar */
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s;
+}
+
+/* Highlight matches */
+.highlight {
+    background: var(--accent);
+    color: #000;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+/* Settings panel */
+.settings-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 10px 0;
+}
+.setting-input {
+    padding: 6px 10px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    width: 80px;
+}
+
+/* Search box */
+.search-box {
+    position: relative;
+    margin-bottom: 15px;
+}
+.search-box input {
+    width: 100%;
+    padding: 12px 40px 12px 15px;
+    background: #0d1117;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    transition: border-color 0.3s;
+}
+.search-box input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.search-box i {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+}
+
+/* Filter toggle */
+.filter-toggle {
+    display: flex;
+    gap: 10px;
+    margin: 15px 0;
+    flex-wrap: wrap;
+}
+.filter-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+.filter-btn.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<div class="nav-bar">
+    <a href="index.html" class="back-btn"><i class="fa-solid fa-arrow-left"></i> Retour au Hub</a>
+</div>
+
+<div style="max-width:1200px;margin:0 auto;padding:20px;">
+
+<h1><i class="fa-solid fa-microscope"></i> String Extractor & Malware Analyzer</h1>
+<p class="subtitle">Analyse avancée de binaires avec filtrage intelligent des faux positifs</p>
+
+<!-- Settings -->
+<details class="settings-panel">
+    <summary style="cursor:pointer;font-weight:bold;"><i class="fa-solid fa-cog"></i> Paramètres d'extraction</summary>
+    <div class="setting-row">
+        <span>Longueur minimale des strings:</span>
+        <input type="number" id="minLength" class="setting-input" value="4" min="1" max="100">
+    </div>
+    <div class="setting-row">
+        <span>Longueur maximale des domaines:</span>
+        <input type="number" id="maxDomainLength" class="setting-input" value="30" min="10" max="100">
+    </div>
+    <div class="setting-row">
+        <span>Mode extraction:</span>
+        <select id="extractMode" class="setting-input" style="width:150px;">
+            <option value="ascii">ASCII seulement</option>
+            <option value="unicode">Unicode (UTF-16)</option>
+            <option value="both">Les deux</option>
+        </select>
+    </div>
+    <div class="setting-row">
+        <span>Filtrage intelligent:</span>
+        <label><input type="checkbox" id="smartFilter" checked> Activer</label>
+    </div>
+</details>
+
+<!-- DROP -->
+<div id="stringDrop" class="drop-zone">
+    <i class="fa-solid fa-file-code"></i>
+    <div>Glisse un fichier binaire (.exe, .dll, .bin, .apk...) ou clique ici</div>
+    <div style="font-size:12px;margin-top:10px;opacity:0.7;">Taille max recommandée: 50 MB</div>
+    <input type="file" id="stringFile" hidden>
+</div>
+
+<!-- Progress -->
+<div id="progressBar" class="progress-bar" style="display:none;">
+    <div class="progress-fill" id="progressFill"></div>
+</div>
+
+<!-- File info -->
+<div id="fileInfo" style="display:none;">
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Taille du fichier</div>
+            <div class="stat-value" id="fileSize">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Entropie</div>
+            <div class="stat-value" id="entropy">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Strings trouvées</div>
+            <div class="stat-value" id="stringCount">-</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">IoCs détectés</div>
+            <div class="stat-value" id="iocCount">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Actions -->
+<div style="display:flex;gap:10px;margin:20px 0;flex-wrap:wrap;">
+    <button onclick="extractStrings()"><i class="fa-solid fa-play"></i> Extraire & Analyser</button>
+    <button onclick="downloadResults()" class="btn-secondary"><i class="fa-solid fa-download"></i> Export TXT</button>
+    <button onclick="downloadJSON()" class="btn-secondary"><i class="fa-solid fa-file-code"></i> Export JSON</button>
+    <button onclick="copyToClipboard()" class="btn-secondary"><i class="fa-solid fa-copy"></i> Copier</button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+    <button class="tab active" onclick="switchTab('overview')"><i class="fa-solid fa-chart-simple"></i> Aperçu</button>
+    <button class="tab" onclick="switchTab('strings')"><i class="fa-solid fa-list"></i> Toutes les strings</button>
+    <button class="tab" onclick="switchTab('iocs')"><i class="fa-solid fa-bug"></i> IoCs & Patterns</button>
+    <button class="tab" onclick="switchTab('network')"><i class="fa-solid fa-globe"></i> Réseau</button>
+    <button class="tab" onclick="switchTab('external')"><i class="fa-solid fa-link"></i> Analyse externe</button>
+</div>
+
+<!-- Tab: Overview -->
+<div id="tab-overview" class="tab-content active">
+    <h3>🔍 Analyse rapide</h3>
+    <pre id="overviewOutput">Aucune analyse effectuée. Dépose un fichier pour commencer.</pre>
+</div>
+
+<!-- Tab: All Strings -->
+<div id="tab-strings" class="tab-content">
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Rechercher dans les strings..." oninput="filterStrings()">
+        <i class="fa-solid fa-search"></i>
+    </div>
+    <div style="margin-bottom:10px;">
+        <span id="matchCount" style="color:var(--text-muted);font-size:12px;"></span>
+    </div>
+    <pre id="stringOutput">Aucune string extraite.</pre>
+</div>
+
+<!-- Tab: IoCs -->
+<div id="tab-iocs" class="tab-content">
+    <h3>⚠️ Indicateurs de compromission</h3>
+    <div id="iocBadges" style="margin-bottom:15px;"></div>
+    <pre id="iocOutput">Aucun IoC détecté.</pre>
+</div>
+
+<!-- Tab: Network -->
+<div id="tab-network" class="tab-content">
+    <h3>🌐 Artefacts réseau</h3>
+    <div class="filter-toggle">
+        <button class="filter-btn active" onclick="filterNetwork('all')">Tout</button>
+        <button class="filter-btn" onclick="filterNetwork('urls')">URLs</button>
+        <button class="filter-btn" onclick="filterNetwork('ips')">IPs</button>
+        <button class="filter-btn" onclick="filterNetwork('domains')">Domaines</button>
+        <button class="filter-btn" onclick="filterNetwork('emails')">Emails</button>
+    </div>
+    <pre id="networkOutput">Aucun artefact réseau trouvé.</pre>
+</div>
+
+<!-- Tab: External -->
+<div id="tab-external" class="tab-content">
+    <h3>🔗 Analyse externe</h3>
+    <p style="color:var(--text-muted);margin-bottom:15px;">Vérifiez le fichier sur des plateformes tierces (SHA-256 requis)</p>
+    <div id="externalLinks"></div>
+</div>
+
+</div>
+
+<script>
+let currentBinaryFile = null;
+let extractedStrings = [];
+let allStrings = [];
+let currentHash = "";
+let analysisData = {};
+let currentNetworkFilter = 'all';
+
+const stringFileInput = document.getElementById("stringFile");
+const stringDrop = document.getElementById("stringDrop");
+const stringOutput = document.getElementById("stringOutput");
+const overviewOutput = document.getElementById("overviewOutput");
+const iocOutput = document.getElementById("iocOutput");
+const networkOutput = document.getElementById("networkOutput");
+const externalLinks = document.getElementById("externalLinks");
+
+// ----------- TAB SWITCHING -----------
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    event.target.closest('.tab').classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+}
+
+// ----------- DROP & CLICK -----------
+stringDrop.onclick = () => stringFileInput.click();
+
+stringDrop.ondragover = (e) => {
+    e.preventDefault();
+    stringDrop.classList.add("dragover");
+};
+
+stringDrop.ondragleave = (e) => {
+    e.preventDefault();
+    stringDrop.classList.remove("dragover");
+};
+
+stringDrop.ondrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stringDrop.classList.remove("dragover");
+    if(e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+};
+
+stringFileInput.onchange = (e) => {
+    if(e.target.files.length > 0) handleFile(e.target.files[0]);
+};
+
+// ----------- HANDLE FILE -----------
+async function handleFile(file){
+    currentBinaryFile = file;
+    extractedStrings = [];
+    allStrings = [];
+    
+    // Show file info
+    document.getElementById('fileInfo').style.display = 'block';
+    document.getElementById('fileSize').textContent = formatBytes(file.size);
+    
+    // Calculate hash
+    currentHash = await sha256(file);
+    generateExternalLinks();
+    
+    // Reset outputs
+    stringOutput.textContent = "Fichier chargé. Cliquez sur 'Extraire & Analyser'";
+    overviewOutput.textContent = "Fichier chargé. Cliquez sur 'Extraire & Analyser'";
+    iocOutput.textContent = "";
+    networkOutput.textContent = "";
+    
+    // Update drop zone
+    stringDrop.innerHTML = `
+        <i class="fa-solid fa-check-circle" style="color:var(--accent);"></i>
+        <div><strong>${file.name}</strong></div>
+        <div style="font-size:12px;margin-top:5px;opacity:0.7;">${formatBytes(file.size)} • ${file.type || 'binary'}</div>
+    `;
+}
+
+// ----------- SHA-256 -----------
+async function sha256(file){
+    const buf = await file.arrayBuffer();
+    const hash = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+
+// ----------- FORMAT BYTES -----------
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+// ----------- LIENS EXTERNES -----------
+function generateExternalLinks(){
+    if(!currentHash) return;
+    const vt = `https://www.virustotal.com/gui/file/${currentHash}`;
+    const anyrun = `https://app.any.run/submissions/#search=${currentHash}`;
+    const hybrid = `https://www.hybrid-analysis.com/search?query=${currentHash}`;
+    const malwarebazaar = `https://bazaar.abuse.ch/browse.php?search=sha256:${currentHash}`;
+    
+    externalLinks.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:15px;">
+            <a href="${vt}" target="_blank" class="external-btn">
+                <i class="fa-solid fa-shield-virus"></i> VirusTotal
+            </a>
+            <a href="${anyrun}" target="_blank" class="external-btn">
+                <i class="fa-solid fa-flask"></i> ANY.RUN
+            </a>
+            <a href="${hybrid}" target="_blank" class="external-btn">
+                <i class="fa-solid fa-dna"></i> Hybrid Analysis
+            </a>
+            <a href="${malwarebazaar}" target="_blank" class="external-btn">
+                <i class="fa-solid fa-database"></i> MalwareBazaar
+            </a>
+        </div>
+        <div style="background:#0d1117;padding:10px;border-radius:6px;font-size:12px;">
+            <strong>SHA-256:</strong> <code style="color:var(--accent);">${currentHash}</code>
+            <button onclick="copyHash()" style="margin-left:10px;padding:4px 8px;font-size:11px;">
+                <i class="fa-solid fa-copy"></i>
+            </button>
+        </div>
+    `;
+}
+
+function copyHash() {
+    navigator.clipboard.writeText(currentHash);
+    alert('Hash copié!');
+}
+
+// ----------- PROGRESS BAR -----------
+function showProgress(percent) {
+    document.getElementById('progressBar').style.display = 'block';
+    document.getElementById('progressFill').style.width = percent + '%';
+}
+
+function hideProgress() {
+    setTimeout(() => {
+        document.getElementById('progressBar').style.display = 'none';
+        document.getElementById('progressFill').style.width = '0%';
+    }, 500);
+}
+
+// ----------- SMART FILTERING -----------
+function isValidDomain(domain) {
+    // Filtre les faux domaines
+    const maxLen = parseInt(document.getElementById('maxDomainLength').value) || 30;
+    
+    // Trop court ou trop long
+    if(domain.length < 4 || domain.length > maxLen) return false;
+    
+    // Contient des caractères suspects
+    if(/[^a-zA-Z0-9.-]/.test(domain)) return false;
+    
+    // Trop de points (ex: a.b.c.d.e.f)
+    if((domain.match(/\./g) || []).length > 3) return false;
+    
+    // Extensions invalides
+    const invalidExts = ['.pdb', '.dll', '.exe', '.sys', '.obj', '.lib', '.tmp'];
+    if(invalidExts.some(ext => domain.toLowerCase().endsWith(ext))) return false;
+    
+    // Patterns suspicieux (trop de majuscules, nombres)
+    const parts = domain.split('.');
+    for(let part of parts) {
+        // Partie vide
+        if(part.length === 0) return false;
+        
+        // Que des chiffres
+        if(/^\d+$/.test(part)) return false;
+        
+        // Un seul caractère (sauf pour TLD connus)
+        if(part.length === 1 && parts.indexOf(part) < parts.length - 1) return false;
+        
+        // Trop de majuscules
+        const upperCount = (part.match(/[A-Z]/g) || []).length;
+        if(upperCount > part.length * 0.7 && part.length > 2) return false;
+    }
+    
+    // TLD valides seulement
+    const validTLDs = ['com', 'net', 'org', 'edu', 'gov', 'mil', 'io', 'co', 'uk', 'de', 'fr', 'jp', 'cn', 'ru', 'br', 'au', 'in', 'it', 'nl', 'se', 'no', 'es', 'pl', 'ca', 'be', 'ch', 'at', 'dk', 'fi', 'cz', 'pt', 'gr', 'ro', 'hu', 'ua', 'nz', 'za', 'sg', 'hk', 'mx', 'ar', 'cl', 'my', 'th', 'ph', 'vn', 'id', 'ae', 'il', 'tr', 'sa', 'eg', 'pk', 'ng', 'ke', 'tz', 'ug'];
+    const tld = parts[parts.length - 1].toLowerCase();
+    if(!validTLDs.includes(tld)) return false;
+    
+    return true;
+}
+
+function isValidIP(ip) {
+    const parts = ip.split('.').map(Number);
+    
+    // Vérifier que chaque partie est valide
+    if(parts.some(p => isNaN(p) || p < 0 || p > 255)) return false;
+    
+    // Filtrer les IPs privées/réservées (optionnel pour l'analyse)
+    // 0.0.0.0, 127.x.x.x, 10.x.x.x, 172.16-31.x.x, 192.168.x.x
+    if(parts[0] === 0 || parts[0] === 127) return false;
+    if(parts[0] === 10) return false;
+    if(parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+    if(parts[0] === 192 && parts[1] === 168) return false;
+    
+    // Filtrer les patterns suspicieux (ex: 9.6.9.0)
+    if(parts.every(p => p < 10)) return false;
+    
+    return true;
+}
+
+function isValidEmail(email) {
+    // Filtre les faux emails
+    if(email.length < 6 || email.length > 100) return false;
+    
+    // Pattern trop simple (ex: 9@F.jzQ)
+    const parts = email.split('@');
+    if(parts.length !== 2) return false;
+    
+    const [local, domain] = parts;
+    
+    // Local part trop court ou bizarre
+    if(local.length < 2 || /^[0-9]+$/.test(local)) return false;
+    
+    // Domaine invalide
+    if(!isValidDomain(domain)) return false;
+    
+    return true;
+}
+
+// ----------- EXTRACTION STRINGS -----------
+async function extractStrings(){
+    if(!currentBinaryFile) return alert("Dépose un fichier d'abord !");
+
+    showProgress(10);
+    
+    const buffer = await currentBinaryFile.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    
+    showProgress(30);
+    
+    const minLen = parseInt(document.getElementById('minLength').value) || 4;
+    const mode = document.getElementById('extractMode').value;
+    
+    let results = [];
+    
+    // ASCII extraction
+    if(mode === 'ascii' || mode === 'both') {
+        let temp = "";
+        for(let i=0; i<bytes.length; i++){
+            const c = bytes[i];
+            if(c>=32 && c<=126) {
+                temp += String.fromCharCode(c);
+            } else {
+                if(temp.length >= minLen) results.push(temp);
+                temp = "";
+            }
+        }
+        if(temp.length >= minLen) results.push(temp);
+    }
+    
+    showProgress(60);
+    
+    // Unicode extraction (UTF-16LE)
+    if(mode === 'unicode' || mode === 'both') {
+        let temp = "";
+        for(let i=0; i<bytes.length-1; i+=2){
+            const charCode = bytes[i] | (bytes[i+1] << 8);
+            if(charCode >= 32 && charCode <= 126) {
+                temp += String.fromCharCode(charCode);
+            } else {
+                if(temp.length >= minLen) results.push(temp);
+                temp = "";
+            }
+        }
+        if(temp.length >= minLen) results.push(temp);
+    }
+    
+    // Remove duplicates
+    allStrings = [...new Set(results)];
+    extractedStrings = allStrings;
+    
+    showProgress(80);
+    
+    // Analysis
+    analyzeBinary(bytes);
+    findIoCs();
+    findNetwork();
+    generateOverview();
+    
+    showProgress(100);
+    
+    // Update UI
+    stringOutput.textContent = allStrings.join("\n");
+    document.getElementById('stringCount').textContent = allStrings.length;
+    
+    hideProgress();
+}
+
+// ----------- ENTROPY -----------
+function calculateEntropy(bytes){
+    const freq = new Array(256).fill(0);
+    for(let b of bytes) freq[b]++;
+    let entropy = 0;
+    for(let f of freq){
+        if(f === 0) continue;
+        let p = f / bytes.length;
+        entropy -= p * Math.log2(p);
+    }
+    return entropy;
+}
+
+// ----------- ANALYZE BINARY -----------
+function analyzeBinary(bytes){
+    const entropy = calculateEntropy(bytes);
+    document.getElementById('entropy').textContent = entropy.toFixed(2);
+    
+    analysisData.entropy = entropy;
+    analysisData.isPacked = entropy > 7.2;
+    analysisData.fileSize = bytes.length;
+    
+    // Detect file type
+    const header = Array.from(bytes.slice(0, 4)).map(b => b.toString(16).padStart(2, '0')).join('');
+    analysisData.fileType = detectFileType(header, bytes);
+    
+    // Check for common packers
+    const text = extractedStrings.join(" ");
+    analysisData.packers = [];
+    if(text.includes("UPX!")) analysisData.packers.push("UPX");
+    if(text.includes("PECompact")) analysisData.packers.push("PECompact");
+    if(text.includes(".ndata") || text.includes(".enigma")) analysisData.packers.push("Enigma");
+    if(text.includes("themida")) analysisData.packers.push("Themida");
+}
+
+function detectFileType(header, bytes) {
+    const headers = {
+        '4d5a9000': 'PE/EXE (Windows)',
+        '7f454c46': 'ELF (Linux)',
+        'cafebabe': 'Mach-O (macOS)',
+        '504b0304': 'ZIP/APK/JAR',
+        '89504e47': 'PNG',
+        'ffd8ffe0': 'JPEG',
+        '25504446': 'PDF'
+    };
+    return headers[header] || 'Unknown';
+}
+
+// ----------- FIND IOCs -----------
+function findIoCs(){
+    const text = extractedStrings.join("\n");
+    
+    analysisData.iocs = {
+        suspicious_apis: [],
+        registry_keys: [],
+        file_paths: [],
+        crypto: []
+    };
+    
+    // Suspicious Windows APIs
+    const suspiciousAPIs = [
+        "VirtualAlloc", "VirtualProtect", "WriteProcessMemory", 
+        "CreateRemoteThread", "LoadLibrary", "GetProcAddress",
+        "WinExec", "ShellExecute", "URLDownloadToFile",
+        "InternetOpen", "HttpSendRequest", "CryptEncrypt",
+        "CreateProcess", "TerminateProcess", "OpenProcess"
+    ];
+    
+    suspiciousAPIs.forEach(api => {
+        if(text.includes(api)) {
+            analysisData.iocs.suspicious_apis.push(api);
+        }
+    });
+    
+    // Registry keys
+    const registryRegex = /HKEY_[A-Z_]+\\[^\s"]+/g;
+    const regMatches = text.match(registryRegex);
+    if(regMatches) analysisData.iocs.registry_keys = [...new Set(regMatches)];
+    
+    // File paths
+    const pathRegex = /[A-Z]:\\[^\s"<>|]+/g;
+    const pathMatches = text.match(pathRegex);
+    if(pathMatches) analysisData.iocs.file_paths = [...new Set(pathMatches)];
+    
+    // Crypto indicators
+    const cryptoKeywords = ["AES", "RSA", "DES", "base64", "encrypt", "decrypt", "cipher"];
+    cryptoKeywords.forEach(kw => {
+        if(text.toLowerCase().includes(kw.toLowerCase())) {
+            analysisData.iocs.crypto.push(kw);
+        }
+    });
+    
+    // Display IoCs
+    let iocText = "";
+    let totalIocs = 0;
+    let badges = "";
+    
+    if(analysisData.iocs.suspicious_apis.length > 0) {
+        iocText += "=== ⚠️ APIs suspectes ===\n";
+        analysisData.iocs.suspicious_apis.forEach(api => {
+            iocText += `• ${api}\n`;
+            badges += `<span class="badge badge-danger">${api}</span>`;
+        });
+        iocText += "\n";
+        totalIocs += analysisData.iocs.suspicious_apis.length;
+    }
+    
+    if(analysisData.iocs.registry_keys.length > 0) {
+        iocText += "=== 🔑 Clés de registre ===\n";
+        analysisData.iocs.registry_keys.slice(0, 20).forEach(key => {
+            iocText += `• ${key}\n`;
+        });
+        if(analysisData.iocs.registry_keys.length > 20) {
+            iocText += `... et ${analysisData.iocs.registry_keys.length - 20} autres\n`;
+        }
+        iocText += "\n";
+        totalIocs += analysisData.iocs.registry_keys.length;
+    }
+    
+    if(analysisData.iocs.file_paths.length > 0) {
+        iocText += "=== 📁 Chemins de fichiers ===\n";
+        analysisData.iocs.file_paths.slice(0, 20).forEach(path => {
+            iocText += `• ${path}\n`;
+        });
+        if(analysisData.iocs.file_paths.length > 20) {
+            iocText += `... et ${analysisData.iocs.file_paths.length - 20} autres\n`;
+        }
+        iocText += "\n";
+        totalIocs += analysisData.iocs.file_paths.length;
+    }
+    
+    if(analysisData.iocs.crypto.length > 0) {
+        iocText += "=== 🔐 Indicateurs cryptographiques ===\n";
+        analysisData.iocs.crypto.forEach(c => {
+            iocText += `• ${c}\n`;
+            badges += `<span class="badge badge-warning">${c}</span>`;
+        });
+        iocText += "\n";
+    }
+    
+    iocOutput.textContent = iocText || "Aucun IoC majeur détecté.";
+    document.getElementById('iocCount').textContent = totalIocs;
+    document.getElementById('iocBadges').innerHTML = badges;
+}
+
+// ----------- FIND NETWORK -----------
+function findNetwork(){
+    const urlRegex = /(https?:\/\/[^\s"<>]+)/g;
+    const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
+    const emailRegex = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+    const domainRegex = /\b[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,6}\b/gi;
+    
+    const text = extractedStrings.join("\n");
+    const smartFilter = document.getElementById('smartFilter').checked;
+    
+    let urls = [...new Set(text.match(urlRegex) || [])];
+    let ips = [...new Set(text.match(ipRegex) || [])];
+    let emails = [...new Set(text.match(emailRegex) || [])];
+    let domains = [...new Set(text.match(domainRegex) || [])];
+    
+    // Smart filtering
+    if(smartFilter) {
+        ips = ips.filter(isValidIP);
+        emails = emails.filter(isValidEmail);
+        domains = domains.filter(isValidDomain);
+    }
+    
+    analysisData.network = { urls, ips, domains, emails };
+    displayNetwork();
+}
+
+function displayNetwork() {
+    const { urls, ips, domains, emails } = analysisData.network;
+    let netText = "";
+    
+    if(currentNetworkFilter === 'all' || currentNetworkFilter === 'urls') {
+        if(urls.length > 0) {
+            netText += "=== 🌐 URLs ===\n";
+            urls.forEach(url => netText += `• ${url}\n`);
+            netText += "\n";
+        }
+    }
+    
+    if(currentNetworkFilter === 'all' || currentNetworkFilter === 'ips') {
+        if(ips.length > 0) {
+            netText += "=== 📍 Adresses IP ===\n";
+            ips.forEach(ip => netText += `• ${ip}\n`);
+            netText += "\n";
+        }
+    }
+    
+    if(currentNetworkFilter === 'all' || currentNetworkFilter === 'domains') {
+        if(domains.length > 0) {
+            netText += "=== 🌍 Domaines ===\n";
+            domains.slice(0, 50).forEach(domain => netText += `• ${domain}\n`);
+            if(domains.length > 50) netText += `... et ${domains.length - 50} autres\n`;
+            netText += "\n";
+        }
+    }
+    
+    if(currentNetworkFilter === 'all' || currentNetworkFilter === 'emails') {
+        if(emails.length > 0) {
+            netText += "=== 📧 Emails ===\n";
+            emails.forEach(email => netText += `• ${email}\n`);
+            netText += "\n";
+        }
+    }
+    
+    networkOutput.textContent = netText || "Aucun artefact réseau trouvé.";
+}
+
+function filterNetwork(type) {
+    currentNetworkFilter = type;
+    
+    // Update button states
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    displayNetwork();
+}
+
+// ----------- GENERATE OVERVIEW -----------
+function generateOverview(){
+    let overview = "=== 📊 Rapport d'analyse ===\n\n";
+    
+    overview += `Fichier: ${currentBinaryFile.name}\n`;
+    overview += `Type: ${analysisData.fileType}\n`;
+    overview += `Taille: ${formatBytes(analysisData.fileSize)}\n`;
+    overview += `Entropie: ${analysisData.entropy.toFixed(2)} ${analysisData.isPacked ? '⚠️ (Probablement packé/chiffré)' : '✓'}\n`;
+    overview += `SHA-256: ${currentHash}\n\n`;
+    
+    // Packers
+    if(analysisData.packers.length > 0) {
+        overview += `⚠️ Packers détectés: ${analysisData.packers.join(', ')}\n\n`;
+    }
+    
+    // Threat level
+    let threatLevel = 0;
+    if(analysisData.isPacked) threatLevel++;
+    if(analysisData.iocs.suspicious_apis.length > 5) threatLevel += 2;
+    if(analysisData.iocs.suspicious_apis.length > 0) threatLevel++;
+    if(analysisData.network.urls.length > 3) threatLevel++;
+    
+    overview += "Niveau de menace: ";
+    if(threatLevel === 0) overview += "🟢 FAIBLE\n";
+    else if(threatLevel <= 2) overview += "🟡 MOYEN\n";
+    else if(threatLevel <= 4) overview += "🟠 ÉLEVÉ\n";
+    else overview += "🔴 CRITIQUE\n";
+    
+    overview += "\n=== 📈 Statistiques ===\n\n";
+    overview += `Strings extraites: ${extractedStrings.length}\n`;
+    overview += `APIs suspectes: ${analysisData.iocs.suspicious_apis.length}\n`;
+    overview += `Clés de registre: ${analysisData.iocs.registry_keys.length}\n`;
+    overview += `Chemins de fichiers: ${analysisData.iocs.file_paths.length}\n`;
+    overview += `URLs trouvées: ${analysisData.network.urls.length}\n`;
+    overview += `IPs trouvées: ${analysisData.network.ips.length}\n`;
+    overview += `Domaines valides: ${analysisData.network.domains.length}\n`;
+    overview += `Emails valides: ${analysisData.network.emails.length}\n`;
+    
+    overviewOutput.textContent = overview;
+}
+
+// ----------- SEARCH/FILTER -----------
+function filterStrings(){
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    
+    if(!query) {
+        stringOutput.textContent = allStrings.join("\n");
+        document.getElementById('matchCount').textContent = "";
+        return;
+    }
+    
+    const filtered = allStrings.filter(s => s.toLowerCase().includes(query));
+    
+    // Highlight matches
+    const highlighted = filtered.map(s => {
+        const regex = new RegExp(`(${query})`, 'gi');
+        return s.replace(regex, '<span class="highlight">$1</span>');
+    });
+    
+    stringOutput.innerHTML = highlighted.join("\n");
+    document.getElementById('matchCount').textContent = `${filtered.length} résultat(s)`;
+}
+
+// ----------- EXPORT -----------
+function downloadResults(){
+    if(extractedStrings.length === 0) return alert("Aucune string à exporter !");
+    
+    let content = `=== String Extractor Report ===\n`;
+    content += `File: ${currentBinaryFile.name}\n`;
+    content += `SHA-256: ${currentHash}\n`;
+    content += `Date: ${new Date().toISOString()}\n\n`;
+    content += `=== Strings (${extractedStrings.length}) ===\n\n`;
+    content += extractedStrings.join("\n");
+    
+    const blob = new Blob([content], {type:"text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `strings_${currentBinaryFile.name}.txt`;
+    a.click();
+}
+
+function downloadJSON(){
+    if(!analysisData || extractedStrings.length === 0) return alert("Aucune donnée à exporter !");
+    
+    const report = {
+        file: {
+            name: currentBinaryFile.name,
+            size: currentBinaryFile.size,
+            type: analysisData.fileType,
+            sha256: currentHash
+        },
+        analysis: {
+            entropy: analysisData.entropy,
+            isPacked: analysisData.isPacked,
+            packers: analysisData.packers
+        },
+        strings: extractedStrings,
+        iocs: analysisData.iocs,
+        network: analysisData.network,
+        timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `analysis_${currentBinaryFile.name}.json`;
+    a.click();
+}
+
+function copyToClipboard(){
+    if(extractedStrings.length === 0) return alert("Aucune string à copier !");
+    navigator.clipboard.writeText(extractedStrings.join("\n"));
+    alert(`${extractedStrings.length} strings copiées dans le presse-papier !`);
+}
+</script>
+
+</body>
+</html>
