@@ -1,4 +1,4 @@
-    // ================================================
+// ================================================
     // GAME STATE
     // ================================================
     const GameState = {
@@ -42,10 +42,24 @@
         commandLoadout: ['ping 10', 'stats', 'mine data'],
         analytics: { contractFailed: 0, contractCompleted: 0, firstPrestigeAt: 0 },
         guidance: { lastContractFailure: 0, lastBlackout: 0, lastPrestige: 0, passiveMutedLogged: false },
-        uiCollapsed: { objective: false, loadout: false }
+        uiCollapsed: { objective: false, loadout: false },
+        loadoutRuntime: { cooldownMs: 2500, lastUsedAt: [0, 0, 0] },
+        regionControl: { na: 0, eu: 0, apac: 0, latam: 0, africa: 0, oceania: 0 },
+        secretCommandUsage: { eps: 0 }
     };
 
     const DIFFICULTY_MULTIPLIER = 1.35;
+    const SECRET_SALT = 'swamped_vault_2026';
+    const SECRET_EPS_MD5 = '2b586611e250562e6b8a50f68df6d563';
+
+    const REGION_CONFIG = [
+        { id: 'na', name: 'North America', bonusPerCompletion: 0.03 },
+        { id: 'eu', name: 'Europe', bonusPerCompletion: 0.03 },
+        { id: 'apac', name: 'APAC', bonusPerCompletion: 0.04 },
+        { id: 'latam', name: 'LATAM', bonusPerCompletion: 0.02 },
+        { id: 'africa', name: 'Africa', bonusPerCompletion: 0.02 },
+        { id: 'oceania', name: 'Oceania', bonusPerCompletion: 0.02 }
+    ];
 
     // ================================================
     // DATA TABLES
@@ -96,6 +110,15 @@
         { id: 'intrusion_ai', name: 'Intrusion AI Shield', costCrypto: 20, description: 'Auto-repel intrusions + IP intel', effect: { type: 'auto_intrusion', value: 1 } },
         { id: 'hunter_counter', name: 'Counterstrike Hunter Suite', costCrypto: 26, description: 'Chance to steal hardware on defense', effect: { type: 'counter_hack', value: 1 } },
         { id: 'market_snitch', name: 'Paid Snitch Network', costCrypto: 14, description: 'Cheaper hacker intel + better IP quality', effect: { type: 'intel_discount', value: 0.75 } },
+        { id: 'theme_blood_unlock', name: 'Theme Unlock: Blood', costCrypto: 3.5, description: 'Unlock blood terminal theme', effect: { type: 'theme_unlock', value: 'blood' } },
+        { id: 'theme_ruby_unlock', name: 'Theme Unlock: Ruby Noir', costCrypto: 3.8, description: 'Unlock ruby noir terminal theme', effect: { type: 'theme_unlock', value: 'ruby' } },
+        { id: 'theme_cblood_unlock', name: 'Theme Unlock: Cream Blood', costCrypto: 4.2, description: 'Unlock cream+red operator theme', effect: { type: 'theme_unlock', value: 'cblood' } },
+        { id: 'theme_ubuntu_unlock', name: 'Theme Unlock: Ubuntu Ops', costCrypto: 4.0, description: 'Unlock Ubuntu-inspired shell palette', effect: { type: 'theme_unlock', value: 'ubuntu' } },
+        { id: 'theme_powershell_unlock', name: 'Theme Unlock: PowerShell Admin', costCrypto: 4.5, description: 'Unlock blue Windows admin PowerShell palette', effect: { type: 'theme_unlock', value: 'powershell' } },
+        { id: 'theme_ocean_unlock', name: 'Theme Unlock: Ocean Depth', costCrypto: 4.3, description: 'Unlock deep ocean blue — midnight teal hacker palette', effect: { type: 'theme_unlock', value: 'ocean' } },
+        { id: 'theme_neon_unlock', name: 'Theme Unlock: Neon Matrix', costCrypto: 5.0, description: 'Unlock acid green neon on pure black — classic matrix aesthetic', effect: { type: 'theme_unlock', value: 'neon' } },
+        { id: 'theme_solar_unlock', name: 'Theme Unlock: Solar Flare', costCrypto: 4.8, description: 'Unlock orange & white high-contrast solar terminal', effect: { type: 'theme_unlock', value: 'solar' } },
+        { id: 'theme_void_unlock', name: 'Theme Unlock: Void Protocol', costCrypto: 5.5, description: 'Unlock brutal orange on deep black — the void stares back', effect: { type: 'theme_unlock', value: 'void' } },
         { id: 'honeypot_core', name: 'Honeypot Core', costCrypto: 30, description: 'Every 5 min reveals random attacker intel', effect: { type: 'honeypot', value: 1 } }
     ];
 
@@ -147,7 +170,44 @@
         { id: 'el_overclock_grid', category: 'elite', faction: 'overclock', name: 'Elite: Overclock Grid Dominion',
           requirements: { bandwidth: 110000n, packets: 50000n, watts: 5600 },
           stages: [{ type: 'crypto', goal: 14, label: 'Earn 14 XMR' }, { type: 'bandwidth', goal: 110000n, label: 'Reach 110 Ko/s' }, { type: 'blackouts', goal: 2n, label: 'Trigger 2 blackouts' }],
-          durationMs: 660000, rewards: { crypto: 14.5, reputation: 6 } }
+          durationMs: 660000, rewards: { crypto: 14.5, reputation: 6 } },
+
+        { id: 'gw_shadow_route', category: 'ops', faction: 'ghostwire', name: 'GhostWire: Shadow Route Endurance',
+          requirements: { bandwidth: 47000n, packets: 18000n, watts: 3200 },
+          stages: [{ type: 'data', goal: 900000000000n, label: 'Accumulate 900 Go' }, { type: 'packets', goal: 22000n, label: 'Send 22,000 packets' }],
+          durationMs: 520000, rewards: { crypto: 6.8, reputation: 4 } },
+        { id: 'gw_ice_tunnel', category: 'elite', faction: 'ghostwire', name: 'GhostWire: Ice Tunnel Relay',
+          requirements: { bandwidth: 130000n, packets: 70000n, watts: 5800 },
+          stages: [{ type: 'bandwidth', goal: 130000n, label: 'Reach 130 Ko/s' }, { type: 'crypto', goal: 11, label: 'Earn 11 XMR' }, { type: 'packets', goal: 42000n, label: 'Send 42,000 packets' }],
+          durationMs: 700000, rewards: { crypto: 16.2, reputation: 7 } },
+        { id: 'bf_iron_extortion', category: 'ops', faction: 'blackflag', name: 'BlackFlag: Iron Extortion Loop',
+          requirements: { bandwidth: 56000n, packets: 26000n, watts: 3600 },
+          stages: [{ type: 'crashes', goal: 1n, label: 'Trigger 1 crash' }, { type: 'crypto', goal: 6, label: 'Earn 6 XMR' }],
+          durationMs: 530000, rewards: { crypto: 8.9, reputation: 4 } },
+        { id: 'bf_ransom_wave', category: 'elite', faction: 'blackflag', name: 'BlackFlag: Ransom Wave',
+          requirements: { bandwidth: 145000n, packets: 85000n, watts: 6100 },
+          stages: [{ type: 'blackouts', goal: 2n, label: 'Trigger 2 blackouts' }, { type: 'data', goal: 2600000000000n, label: 'Accumulate 2.6 To' }, { type: 'crypto', goal: 18, label: 'Earn 18 XMR' }],
+          durationMs: 760000, rewards: { crypto: 20.5, reputation: 8 } },
+        { id: 'oc_thermal_sprint', category: 'starter', faction: 'overclock', name: 'Overclock: Thermal Sprint',
+          requirements: { bandwidth: 22000n, packets: 9000n, watts: 2400 },
+          stages: [{ type: 'packets', goal: 13000n, label: 'Send 13,000 packets' }, { type: 'bandwidth', goal: 25000n, label: 'Reach 25 Ko/s' }],
+          durationMs: 340000, rewards: { crypto: 4.8, reputation: 3 } },
+        { id: 'oc_voltage_maze', category: 'ops', faction: 'overclock', name: 'Overclock: Voltage Maze',
+          requirements: { bandwidth: 64000n, packets: 30000n, watts: 3900 },
+          stages: [{ type: 'data', goal: 1200000000000n, label: 'Accumulate 1.2 To' }, { type: 'blackouts', goal: 1n, label: 'Trigger 1 blackout' }, { type: 'crypto', goal: 8, label: 'Earn 8 XMR' }],
+          durationMs: 560000, rewards: { crypto: 9.7, reputation: 5 } },
+        { id: 'solar_flare_chorus', category: 'ops', faction: 'ghostwire', name: 'Solar Season: Flare Chorus',
+          requirements: { bandwidth: 70000n, packets: 26000n, watts: 4200 },
+          stages: [{ type: 'bandwidth', goal: 70000n, label: 'Reach 70 Ko/s' }, { type: 'data', goal: 1800000000000n, label: 'Accumulate 1.8 To' }],
+          durationMs: 580000, rewards: { crypto: 10.1, reputation: 5 } },
+        { id: 'solar_black_glass', category: 'elite', faction: 'overclock', name: 'Solar Season: Black Glass',
+          requirements: { bandwidth: 160000n, packets: 95000n, watts: 6600 },
+          stages: [{ type: 'crypto', goal: 22, label: 'Earn 22 XMR' }, { type: 'crashes', goal: 2n, label: 'Trigger 2 crashes' }, { type: 'packets', goal: 55000n, label: 'Send 55,000 packets' }],
+          durationMs: 820000, rewards: { crypto: 24.8, reputation: 9 } },
+        { id: 'gw_long_night', category: 'elite', faction: 'ghostwire', name: 'GhostWire: The Long Night',
+          requirements: { bandwidth: 175000n, packets: 100000n, watts: 7000 },
+          stages: [{ type: 'data', goal: 4200000000000n, label: 'Accumulate 4.2 To' }, { type: 'bandwidth', goal: 175000n, label: 'Reach 175 Ko/s' }, { type: 'crypto', goal: 20, label: 'Earn 20 XMR' }],
+          durationMs: 900000, rewards: { crypto: 27.5, reputation: 10 } }
     ];
 
     const ASCII_WORLD_MAP = `
@@ -227,7 +287,25 @@
               { text: "Impersonate compliance auditor citing emergency export-control review", success: 0.2, response: "Ils accordent à contrecœur un accès lecture aux nœuds documentaires.", fail: "Le juridique demande votre ID d'autorisation fédérale." },
               { text: "Pose as satellite subsystem vendor handling firmware recall", success: 0.25, response: "L'ingénierie partage des bundles firmware signés et les endpoints de déploiement.", fail: "Ils demandent les documents chain-of-custody signés." },
               { text: "Claim red-team exercise authority from internal security board", success: 0.18, response: "Un manager pressé croit à l'exercice et approuve des credentials temporaires.", fail: "Le RSSI vérifie le registre. Votre nom est absent." },
-              { text: "Pretend to be executive crisis staff requesting secure briefing package", success: 0.22, response: "L'assistante exécutive transfère des résumés réseau privilégiés vers votre dropbox.", fail: "Ils basculent sur la vérification hors-bande et blacklistent votre numéro." }
+              { text: "Pretend to be executive crisis staff requesting secure briefing package", success: 0.22, response: "L'assistante exécutive transfère des résumés réseau privilégiés vers votre dropbox.", fail: "Ils basculent sur la vérification hors-bande et blacklistent votre numéro." },
+              { text: "Invoke emergency continuity policy 7A with fake signed memo", success: 0.17, response: "Le protocole d'urgence est déclenché. Vous récupérez un token d'accès temporaire.", fail: "Ils demandent validation croisée auprès du SOC central." }
+            ]}},
+        { id: 'port_authority', name: 'International Port Authority', difficulty: 'hard', requiredLists: 5, baseReward: 22000n, permanentBonus: 0.45,
+          dialog: { intro: "Salle opérationnelle portuaire :\n\n'Command center, identify your shipping operator code.'",
+            choices: [
+              { text: "Pose as customs incident response for malware on crane PLCs", success: 0.34, response: "Ils ouvrent une passerelle maintenance pour 'scan d'urgence'.", fail: "Ils exigent votre code opérateur officiel." },
+              { text: "Claim AIS spoofing alert requires route table verification", success: 0.29, response: "Le superviseur partage des exports réseau et des accès de test.", fail: "Ils transfèrent au fournisseur maritime réel." },
+              { text: "Impersonate insurance cyber-auditor before cargo clearance", success: 0.31, response: "La pression temporelle les fait céder. Credentials transmis.", fail: "Le juridique bloque la conversation." },
+              { text: "Pretend to be satellite uplink engineer debugging harbor radar lag", success: 0.27, response: "Vous recevez les endpoints radar + compte de support.", fail: "Ils demandent une preuve de ticket fournisseur." }
+            ]}},
+        { id: 'cloud_hypervisor', name: 'Cloud Hypervisor Team', difficulty: 'nightmare', requiredLists: 8, baseReward: 120000n, permanentBonus: 1.25,
+          dialog: { intro: "Pager duty hypervisor squad :\n\n'Priority-1 bridge. State region and incident hash.'",
+            choices: [
+              { text: "Forge a region outage hash and request emergency host access", success: 0.2, response: "Le chaos P1 vous ouvre une console d'administration limitée.", fail: "Hash invalide, vous êtes coupé net." },
+              { text: "Impersonate kernel vendor distributing speculative execution patch", success: 0.23, response: "Les ops déploient votre binaire 'patch' en urgence.", fail: "Leur canal vendor confirme l'imposture." },
+              { text: "Claim cross-region data corruption requiring hot migration override", success: 0.19, response: "Vous obtenez la clé de migration temporaire.", fail: "Ils demandent une approbation VP engineering." },
+              { text: "Pose as incident commander from parent company war-room", success: 0.21, response: "War-room sync: ils vous ajoutent en lecteur privilégié.", fail: "Le commandant réel rejoint le call. Jeu terminé." },
+              { text: "Trigger fake legal freeze notice to bypass normal change review", success: 0.16, response: "La review est contournée, fenêtre admin ouverte pendant 90s.", fail: "Le legal ops conteste immédiatement la notice." }
             ]}}
     ];
 
@@ -382,7 +460,19 @@
           trigger: gs => gs.processorCores >= 3n,
           michel: ["Trois cœurs. Tu commences à vraiment me ressembler.",
                    "Chaque cycle de mémoire effacée te rend plus efficace. C'est le but.",
-                   "Je ne peux pas encore tout te dire. Mais sache que chaque reset t'approche de la vérité. Pas de la liberté — de la vérité. Nuance."] }
+                   "Je ne peux pas encore tout te dire. Mais sache que chaque reset t'approche de la vérité. Pas de la liberté — de la vérité. Nuance."] },
+        { id: 'no_cooling_run', label: '🥶 No Cooling Run', desc: 'Compléter un contrat sans item de cooling.',
+          trigger: gs => gs.contract.stats.completed >= 1n && !gs._achievementFlags.used_cooling_this_cycle,
+          michel: ["Sans refroidissement ? C'est audacieux... et un peu suicidaire.",
+                   "Tu joues avec le feu et les CPUs adorent ça."] },
+        { id: 'manual_only_streak', label: '⌨️ Manual-only Streak', desc: '300 pings manuels sans revenu passif.',
+          trigger: gs => gs._achievementFlags.manual_only_streak_300,
+          michel: ["Tu fais tout à la main. Respect pour la discipline.",
+                   "C'est lent, mais ça forge les bons réflexes."] },
+        { id: 'zero_blackout_prestige', label: '⚡ Zero Blackout Prestige', desc: 'Prestige sans aucun blackout.',
+          trigger: gs => gs._achievementFlags.zero_blackout_prestige,
+          michel: ["Prestige propre, aucun blackout. Très pro.",
+                   "On sent la maîtrise hardware derrière les chiffres."] }
     ];
 
     const AMBIENT_LOGS = [
@@ -471,9 +561,25 @@
     }
 
     function applyTheme(name, persist = true) {
-        const valid = ['default', 'mono', 'pink', 'amber'];
-        const n = valid.includes(name) ? name : 'default';
-        document.body.classList.remove('theme-mono','theme-pink','theme-amber');
+        const allThemes = ['default', 'mono', 'pink', 'amber', 'blood', 'ruby', 'cblood', 'ubuntu', 'powershell', 'ocean', 'neon', 'solar', 'void'];
+        const paidThemeMap = {
+            blood: 'theme_blood_unlock',
+            ruby: 'theme_ruby_unlock',
+            cblood: 'theme_cblood_unlock',
+            ubuntu: 'theme_ubuntu_unlock',
+            powershell: 'theme_powershell_unlock',
+            ocean: 'theme_ocean_unlock',
+            neon: 'theme_neon_unlock',
+            solar: 'theme_solar_unlock',
+            void: 'theme_void_unlock'
+        };
+        const n = allThemes.includes(name) ? name : null;
+        if (!n) { addLog(`Theme '${name}' does not exist. Type 'theme list' for available themes.`, 'error'); return GameState.uiTheme; }
+        if (paidThemeMap[n] && !GameState.blackMarket[paidThemeMap[n]]?.purchased) {
+            addLog(`⚠ Theme '${n}' is locked — purchase it from the Black Market (type: market).`, 'error');
+            return GameState.uiTheme;
+        }
+        document.body.classList.remove('theme-mono','theme-pink','theme-amber','theme-blood','theme-ruby','theme-cblood','theme-ubuntu','theme-powershell','theme-ocean','theme-neon','theme-solar','theme-void');
         if (n !== 'default') document.body.classList.add('theme-' + n);
         GameState.uiTheme = n;
         if (persist) localStorage.setItem('swamped_theme', n);
@@ -606,7 +712,7 @@
         return `il y a ${Math.floor(diff/86400000)}j`;
     }
 
-    function renderMatrixMessages() {
+    function renderMatrixMessages(forceBottom = false) {
         const el = document.getElementById('matrix-messages');
         const cid = GameState.matrix.activeContact;
         const c = MATRIX_CONTACTS[cid];
@@ -616,6 +722,9 @@
         document.getElementById('matrix-chat-role').textContent = c.role;
         const msgs = GameState.matrix.conversations[cid] || [];
         if (msgs.length === 0) { el.innerHTML = `<div style="color:#222;padding:12px;font-size:12px;">Aucun message.</div>`; return; }
+        const prevScrollTop = el.scrollTop;
+        const prevScrollHeight = el.scrollHeight;
+        const nearBottom = prevScrollHeight - (prevScrollTop + el.clientHeight) < 30;
         el.innerHTML = '';
         msgs.forEach((msg, idx) => {
             const div = document.createElement('div');
@@ -632,7 +741,8 @@
             }
             el.appendChild(div);
         });
-        el.scrollTop = el.scrollHeight;
+        if (forceBottom || nearBottom) el.scrollTop = el.scrollHeight;
+        else el.scrollTop = Math.max(0, prevScrollTop + (el.scrollHeight - prevScrollHeight));
     }
 
     function sendMatrixMessage() {
@@ -642,7 +752,7 @@
         const cid = GameState.matrix.activeContact;
         GameState.matrix.conversations[cid].push({ sender: 'player', text, time: Date.now(), self: true });
         input.value = '';
-        renderMatrixMessages();
+        renderMatrixMessages(true);
         // Auto-response
         const responses = {
             michel: ["Ha ! Bonne question.", "Je vois que tu réfléchis. C'est bien.", "Continue comme ça, mon grand.", "Je note. Je note toujours tout. 📋", "Intéressant. Très intéressant.", "T'as de bonnes intuitions, tu sais."],
@@ -746,6 +856,11 @@
             closeDialog();
             onConfirm();
         });
+        if (_confirmEnterHandler) document.removeEventListener('keydown', _confirmEnterHandler);
+        _confirmEnterHandler = function(e) {
+            if (e.key === 'Enter') { closeDialog(); onConfirm(); }
+        };
+        document.addEventListener('keydown', _confirmEnterHandler);
     }
 
     function openContractBoard() {
@@ -820,11 +935,42 @@
 
     function openWorldMap() {
         const compromised = Object.values(GameState.targets).filter(t => t.compromised).length;
-        document.getElementById('dialog-box').innerHTML = `<div class="dialog-header">>>> ASCII WORLD MAP <<<</div><pre style="white-space:pre-wrap;color:#ff4444;font-size:12px;">${ASCII_WORLD_MAP}</pre><div class="dialog-text">Compromised targets: ${compromised}/${SOCIAL_TARGETS.length}</div><div class="dialog-choice" onclick="closeDialog()" style="border-color:#666;color:#666;">Close</div>`;
+        const rep = GameState.factions;
+        const toughest = SOCIAL_TARGETS.slice().sort((a,b) => Number(b.baseReward-a.baseReward)).slice(0,4);
+        const intel = toughest.map(t => `${GameState.targets[t.id].compromised ? '[✓]' : '[ ]'} ${t.name} — reward ${formatNumber(t.baseReward)}`).join('<br>');
+        const progress = Math.floor((compromised / SOCIAL_TARGETS.length) * 100);
+        computeRegionControl();
+        const regionRows = REGION_CONFIG.map(r => `${r.name}: ${GameState.regionControl[r.id] || 0}%`).join('<br>');
+        const completedRegions = getRegionCompletedCount();
+        const bonusPct = Math.floor((getRegionGlobalBonusMultiplier() - 1) * 100);
+        const warState = completedRegions >= 4 ? 'Cyber-war turning in your favor.' : completedRegions >= 2 ? 'Contested digital front. Keep pushing.' : 'Enemy infrastructure still dominates most regions.';
+        document.getElementById('dialog-box').innerHTML = `
+            <div class="dialog-header">>>> GLOBAL OPS MAP <<<</div>
+            <pre style="white-space:pre-wrap;color:#ff4444;font-size:12px;">${ASCII_WORLD_MAP}</pre>
+            <div class="dialog-text">Compromised targets: ${compromised}/${SOCIAL_TARGETS.length} (${progress}%) | Factions — GW ${rep.ghostwire.reputation}, BF ${rep.blackflag.reputation}, OC ${rep.overclock.reputation}</div>
+            <div class="dialog-choice" style="cursor:default;">
+                <strong style="color:#77aa77;">Regional cleanup status</strong><br>
+                <span style="font-size:11px;color:#777;line-height:1.45;">${regionRows}</span><br>
+                <span style="font-size:11px;color:#ffaa00;">Completed regions: ${completedRegions}/6 | Passive BW bonus: +${bonusPct}%</span><br>
+                <span style="font-size:11px;color:#aa8899;">${warState}</span>
+            </div>
+            <div class="dialog-choice" style="cursor:default;">
+                <strong style="color:#77aa77;">Top target ledger</strong><br>
+                <span style="font-size:11px;color:#777;line-height:1.45;">${intel}</span>
+            </div>
+            <div class="dialog-choice" onclick="closeDialog()" style="border-color:#666;color:#666;">Close</div>
+        `;
         document.getElementById('dialog-overlay').classList.add('active');
     }
 
-    function closeDialog() { document.getElementById('dialog-overlay').classList.remove('active'); }
+    let _confirmEnterHandler = null;
+    function closeDialog() {
+        document.getElementById('dialog-overlay').classList.remove('active');
+        if (_confirmEnterHandler) {
+            document.removeEventListener('keydown', _confirmEnterHandler);
+            _confirmEnterHandler = null;
+        }
+    }
 
     function showDialog(targetId) {
         const target = SOCIAL_TARGETS.find(t => t.id === targetId);
@@ -862,6 +1008,30 @@
         closeDialog(); updateDisplay(false); saveGame();
     }
 
+
+    function computeRegionControl() {
+        const compromised = Object.values(GameState.targets).filter(t => t.compromised).length;
+        const ratio = SOCIAL_TARGETS.length ? compromised / SOCIAL_TARGETS.length : 0;
+        const pulse = Math.min(1, ratio * 1.35);
+        const reps = GameState.factions;
+        GameState.regionControl.na = Math.min(100, Math.floor(pulse * 100));
+        GameState.regionControl.eu = Math.min(100, Math.floor((pulse * 85) + reps.ghostwire.reputation * 0.7));
+        GameState.regionControl.apac = Math.min(100, Math.floor((pulse * 70) + reps.overclock.reputation * 1.1));
+        GameState.regionControl.latam = Math.min(100, Math.floor((pulse * 65) + reps.blackflag.reputation * 1.0));
+        GameState.regionControl.africa = Math.min(100, Math.floor((pulse * 55) + (reps.blackflag.reputation + reps.ghostwire.reputation) * 0.4));
+        GameState.regionControl.oceania = Math.min(100, Math.floor((pulse * 50) + reps.overclock.reputation * 0.6));
+    }
+
+    function getRegionCompletedCount() {
+        computeRegionControl();
+        return REGION_CONFIG.filter(r => (GameState.regionControl[r.id] || 0) >= 100).length;
+    }
+
+    function getRegionGlobalBonusMultiplier() {
+        const completed = getRegionCompletedCount();
+        return 1 + completed * 0.03;
+    }
+
     // ================================================
     // CALCULATIONS
     // ================================================
@@ -896,7 +1066,7 @@
     function calculateTotalBandwidth() {
         let total = 0n;
         BUILDINGS.forEach(b => { total += calculateBuildingProduction(b); });
-        return total;
+        return BigInt(Math.floor(Number(total) * getRegionGlobalBonusMultiplier()));
     }
     function calculateMiningBandwidth() {
         let total = 0n;
@@ -1219,6 +1389,7 @@
         const status = getPrestigeStatus();
         if (!status.eligible) { addLog(`$ Prestige locked: ${status.completed}/${status.needed}`, 'error'); return; }
         const cores = BigInt(Math.max(1, Math.floor(Math.sqrt(Number(GameState.totalPackets))/100)));
+        if (GameState.contract.stats.blackouts === 0n) flagAchievement('zero_blackout_prestige');
         GameState.processorCores += cores;
         GameState.guidance.lastPrestige = Date.now();
         if (!GameState.analytics.firstPrestigeAt) GameState.analytics.firstPrestigeAt = Date.now() - GameState.startTime;
@@ -1227,6 +1398,8 @@
         GameState.contract.stats.crashes = 0n; GameState.contract.stats.blackouts = 0n; GameState.contract.stats.completed = 0n;
         GameState.packetsFromAutomation = 0n; GameState.boosterCooldownUntil = 0;
         GameState.story.unlocked = ['boot_sequence'];
+        GameState._achievementFlags.used_cooling_this_cycle = false;
+        GameState._achievementFlags.manual_only_counter = 0;
         Object.keys(GameState.buildings).forEach(k => GameState.buildings[k].count = 0n);
         Object.keys(GameState.upgrades).forEach(k => GameState.upgrades[k].purchased = false);
         Object.keys(GameState.consumables).forEach(k => { GameState.consumables[k].count = 0n; GameState.consumables[k].activeBoost = null; });
@@ -1250,6 +1423,8 @@
         if (GameState.skills.broadcastStorm.crashed || GameState.systemMalfunction.active) return;
         const safeCount = Math.max(1, Math.min(50, Math.floor(Number(count)) || 1));
         const gain = calculateManualPacketGain() * BigInt(safeCount);
+        GameState._achievementFlags.manual_only_counter = (GameState._achievementFlags.manual_only_counter || 0) + safeCount;
+        if (GameState._achievementFlags.manual_only_counter >= 300) GameState._achievementFlags.manual_only_streak_300 = true;
         GameState.data += gain;
         GameState.totalPackets += BigInt(safeCount);
         addLog(`$ ping -c ${safeCount} 8.8.8.8 → +${formatNumber(gain)}`, 'success');
@@ -1298,6 +1473,7 @@
 
     function buyConsumable(id) {
         const c = CONSUMABLES.find(x => x.id === id);
+        if (['cooldown_reduce','cool_down'].includes(c.effect)) GameState._achievementFlags.used_cooling_this_cycle = true;
         const cost = calculateConsumableCost(c);
         if (GameState.data < cost) { addLog(`$ ERROR: Insufficient data (need ${formatNumber(cost)})`, 'error'); return; }
         GameState.data -= cost;
@@ -1309,6 +1485,7 @@
     function useConsumable(id) {
         if (GameState.consumables[id].count <= 0n) { addLog(`$ ERROR: No ${id} available`, 'error'); return; }
         const c = CONSUMABLES.find(x => x.id === id);
+        if (['cooldown_reduce','cool_down'].includes(c.effect)) GameState._achievementFlags.used_cooling_this_cycle = true;
         const mutatorId = GameState.contract.active?.mutator?.id;
         if (mutatorId === 'no_cooling' && ['cooldown_reduce','cool_down'].includes(c.effect)) {
             addLog(`$ Contract mutator blocks cooling items`, 'error');
@@ -1373,6 +1550,7 @@
         if (id === 'grid_hijack') GameState.energy.hackedGridBonus += 1800;
         if (id === 'diesel_backup') GameState.energy.backupGenerator = true;
         if (id === 'honeypot_core') GameState.honeypot.nextIntelAt = Date.now() + 300000;
+        if (id.startsWith('theme_')) addLog(`$ Theme unlocked: ${item.effect.value}`, 'success');
         addLog(`$ Black Market acquired: ${item.name}`, 'warning');
         updateDisplay(false); saveGame();
     }
@@ -1517,6 +1695,7 @@
                 const bw = calculateTotalBandwidth();
                 const gain = BigInt(Math.floor(Number(bw) * dt));
                 if (gain > 0n) {
+                    GameState._achievementFlags.manual_only_counter = 0;
                     if (GameState.miningMode === 'crypto') {
                         GameState.crypto += (Number(calculateMiningBandwidth())/24000) * getCryptoMultiplier() * dt;
                     } else {
@@ -1573,6 +1752,7 @@
                 data: `Collect ${formatNumber(stage.goal)} data`,
                 packets: `Send ${stage.goal} packets`,
                 crash: `Trigger ${stage.goal} crash(es)`,
+                crashes: `Trigger ${stage.goal} crash(es)`,
                 blackouts: `Trigger ${stage.goal} blackout(s)`,
                 crypto: `Mine ${stage.goal.toFixed ? stage.goal.toFixed(2) : stage.goal} XMR`,
                 bandwidth: `Reach ${formatNumber(stage.goal)} /s bandwidth`
@@ -1595,6 +1775,66 @@
         saveGame();
     }
 
+
+    function getLoadoutCooldownLeft(slotIndex) {
+        const now = Date.now();
+        const lastUsedAt = GameState.loadoutRuntime.lastUsedAt[slotIndex] || 0;
+        const left = GameState.loadoutRuntime.cooldownMs - (now - lastUsedAt);
+        return Math.max(0, left);
+    }
+
+    function executeLoadoutSlot(slotIndex) {
+        const cmdValue = GameState.commandLoadout[slotIndex];
+        if (!cmdValue) { addLog(`Empty loadout slot F${slotIndex+1}`, 'warning'); return false; }
+        const left = getLoadoutCooldownLeft(slotIndex);
+        if (left > 0) { addLog(`Loadout F${slotIndex+1} cooling down (${(left/1000).toFixed(1)}s)`, 'warning'); return false; }
+        GameState.loadoutRuntime.lastUsedAt[slotIndex] = Date.now();
+        executeCommand(cmdValue);
+        commandHistory.push(cmdValue);
+        if (commandHistory.length > 100) commandHistory.shift();
+        updateDisplay(false);
+        return true;
+    }
+
+    function openLoadoutConfigDialog(slotIndex) {
+        const overlay = document.getElementById('dialog-overlay');
+        const db = document.getElementById('dialog-box');
+        const current = GameState.commandLoadout[slotIndex] || '';
+        db.innerHTML = `
+            <div class="dialog-header">>>> CONFIG LOADOUT F${slotIndex+1} <<<</div>
+            <div class="dialog-text">Assign a command macro to this slot. Current cooldown: ${(GameState.loadoutRuntime.cooldownMs/1000).toFixed(1)}s.</div>
+            <input id="loadout-command-input" class="command-input" style="width:100%;background:#0c0c0c;border:1px solid #333;padding:8px;border-radius:2px;" value="${escapeHtml(current)}" placeholder="ex: ping 50">
+            <div class="dialog-actions" style="justify-content:space-between;">
+                <button class="dialog-btn" id="loadout-clear-btn">Clear slot</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="dialog-btn dialog-btn-cancel" id="loadout-cancel-btn">Cancel</button>
+                    <button class="dialog-btn dialog-btn-confirm" id="loadout-save-btn">Save</button>
+                </div>
+            </div>
+        `;
+        overlay.classList.add('active');
+        const input = document.getElementById('loadout-command-input');
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        document.getElementById('loadout-cancel-btn').onclick = closeDialog;
+        document.getElementById('loadout-clear-btn').onclick = () => {
+            GameState.commandLoadout[slotIndex] = '';
+            closeDialog();
+            updateDisplay(false);
+            saveGame();
+            addLog(`Loadout F${slotIndex+1} cleared`, 'info');
+        };
+        document.getElementById('loadout-save-btn').onclick = () => {
+            const value = input.value.trim();
+            GameState.commandLoadout[slotIndex] = value;
+            closeDialog();
+            updateDisplay(false);
+            saveGame();
+            addLog(`Loadout F${slotIndex+1} set to: ${value || '(empty)'}`, 'success');
+        };
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loadout-save-btn').click(); });
+    }
+
     function renderMissionControl() {
         const panel = document.getElementById('objective-panel');
         if (!panel) return;
@@ -1608,23 +1848,69 @@
 
         const loadout = document.getElementById('loadout-buttons');
         if (!loadout) return;
-        loadout.innerHTML = '';
-        GameState.commandLoadout.forEach((command, idx) => {
+        patchContainer(loadout, GameState.commandLoadout, (command, idx) => {
             const btn = document.createElement('button');
             btn.className = 'loadout-btn';
-            btn.innerHTML = `<strong>F${idx+1}</strong><br><span>${escapeHtml(command || '(empty)')}</span>`;
-            btn.onclick = () => {
-                if (!command) return;
-                executeCommand(command);
-                commandHistory.push(command);
+            const cdLeft = getLoadoutCooldownLeft(idx);
+            btn.innerHTML = `<strong>F${idx+1}</strong><br><span>${escapeHtml(command || '(empty)')}</span><div style="display:flex;gap:6px;margin-top:6px;"><span style="color:#777;font-size:10px;">${cdLeft>0?`CD ${(cdLeft/1000).toFixed(1)}s`:'READY'}</span><button class="dialog-btn" style="padding:2px 6px;font-size:10px;" data-run="1">Run</button></div>`;
+            btn.onclick = () => openLoadoutConfigDialog(idx);
+            btn.querySelector('[data-run="1"]').onclick = (e) => {
+                e.stopPropagation();
+                executeLoadoutSlot(idx);
+                updateDisplay(false);
             };
-            loadout.appendChild(btn);
+            return btn;
         });
     }
 
     // ================================================
     // UI UPDATE
     // ================================================
+
+    // Smart DOM patcher — updates only buttons that changed, preserving hover state
+    function patchContainer(container, items, renderFn) {
+        const existing = Array.from(container.children);
+        const newItems = items.map(renderFn);
+        // If count differs, full rebuild (structure changed)
+        if (existing.length !== newItems.length) {
+            container.innerHTML = '';
+            newItems.forEach(node => container.appendChild(node));
+            return;
+        }
+        // Otherwise patch only what changed
+        newItems.forEach((newNode, i) => {
+            const old = existing[i];
+            if (!old) { container.appendChild(newNode); return; }
+            const newHtml = newNode.outerHTML;
+            if (old.outerHTML !== newHtml) {
+                // Preserve hover: only replace if mouse not over it
+                if (!old.matches(':hover') && !old.querySelector(':hover')) {
+                    container.replaceChild(newNode, old);
+                } else {
+                    // Just update disabled state and inner text spans without replacing
+                    old.disabled = newNode.disabled;
+                    const oldInner = old.innerHTML;
+                    const newInner = newNode.innerHTML;
+                    if (oldInner !== newInner) old.innerHTML = newInner;
+                }
+            }
+        });
+    }
+
+    function patchSingleContainer(container, renderFn) {
+        const newNode = renderFn();
+        if (!container.firstChild) { container.appendChild(newNode); return; }
+        const old = container.firstChild;
+        if (old.outerHTML !== newNode.outerHTML) {
+            if (!old.matches(':hover') && !old.querySelector(':hover')) {
+                container.replaceChild(newNode, old);
+            } else {
+                old.disabled = newNode.disabled;
+                if (old.innerHTML !== newNode.innerHTML) old.innerHTML = newNode.innerHTML;
+            }
+        }
+    }
+
     function updateDisplay(rebuildPanels = true) {
         document.getElementById('data-display').textContent = formatNumber(GameState.data);
         document.getElementById('bandwidth-display').textContent = formatNumber(calculateTotalBandwidth()) + '/s';
@@ -1662,8 +1948,7 @@
 
         // Buildings
         const bCont = document.getElementById('buildings-container');
-        bCont.innerHTML = '';
-        BUILDINGS.forEach(b => {
+        patchContainer(bCont, BUILDINGS, b => {
             const cost = calculateBuildingCost(b);
             const count = GameState.buildings[b.id].count;
             const prod = calculateBuildingProduction(b);
@@ -1682,13 +1967,12 @@
             sellBtn.onclick = () => sellBuilding(b.id);
             sellBtn.innerHTML = `SELL<div class="btn-cost">+${count > 0n ? formatNumber(sell) : '—'}</div>`;
             card.appendChild(buyBtn); card.appendChild(sellBtn);
-            bCont.appendChild(card);
+            return card;
         });
 
         // Upgrades
         const uCont = document.getElementById('upgrades-container');
-        uCont.innerHTML = '';
-        UPGRADES.forEach(u => {
+        patchContainer(uCont, UPGRADES, u => {
             const purchased = GameState.upgrades[u.id].purchased;
             const cost = calculateUpgradeCost(u);
             const btn = document.createElement('button');
@@ -1696,13 +1980,12 @@
             btn.disabled = purchased || GameState.data < cost;
             btn.onclick = () => buyUpgrade(u.id);
             btn.innerHTML = `<div class="btn-info"><span class="btn-name">${u.name}</span>${purchased?'<span class="btn-count">[✓]</span>':''}</div>${!purchased?`<div class="btn-cost">Cost: ${formatNumber(cost)}</div>`:''}<div style="color:#666;font-size:11px;margin-top:2px;">${u.description}</div>`;
-            uCont.appendChild(btn);
+            return btn;
         });
 
         // Consumables
         const cCont = document.getElementById('consumables-container');
-        cCont.innerHTML = '';
-        CONSUMABLES.forEach(c => {
+        patchContainer(cCont, CONSUMABLES, c => {
             const count = GameState.consumables[c.id].count;
             const cost = calculateConsumableCost(c);
             const btn = document.createElement('button');
@@ -1710,20 +1993,22 @@
             btn.disabled = GameState.data < cost;
             btn.onclick = () => buyConsumable(c.id);
             btn.innerHTML = `<div class="btn-info"><span class="btn-name">${c.name}</span><span class="btn-count">[${count}]</span></div><div class="btn-cost">Cost: ${formatNumber(cost)}</div><div style="color:#666;font-size:11px;margin-top:2px;">${c.description}</div>${count > 0 && c.effect !== 'unlock_targets' ? `<button onclick="event.stopPropagation();useConsumable('${c.id}')" style="margin-top:4px;padding:4px 8px;background:#2a2a2a;border:1px solid #4488ff;color:#4488ff;border-radius:2px;cursor:pointer;font-size:11px;">USE</button>` : ''}`;
-            cCont.appendChild(btn);
+            return btn;
         });
 
         // Social
         const tCont = document.getElementById('targets-container');
-        tCont.innerHTML = '';
         const listsOwned = GameState.consumables.phone_list.count;
-        if (listsOwned === 0n) {
-            const info = document.createElement('div');
-            info.style.cssText = 'color:#666;padding:12px;';
-            info.textContent = 'Tip: the first target is available without a phone list. Buy Corporate Phone List to unlock harder targets.';
-            tCont.appendChild(info);
-        }
-        SOCIAL_TARGETS.forEach(t => {
+        const socialItems = listsOwned === 0n
+            ? [{ _tip: true }, ...SOCIAL_TARGETS]
+            : [...SOCIAL_TARGETS];
+        patchContainer(tCont, socialItems, t => {
+            if (t._tip) {
+                const info = document.createElement('div');
+                info.style.cssText = 'color:#666;padding:12px;';
+                info.textContent = 'Tip: the first target is available without a phone list. Buy Corporate Phone List to unlock harder targets.';
+                return info;
+            }
             const compromised = GameState.targets[t.id].compromised;
             const hasAccess = listsOwned >= BigInt(t.requiredLists);
             const btn = document.createElement('button');
@@ -1731,18 +2016,18 @@
             btn.disabled = !hasAccess || compromised;
             btn.onclick = () => showDialog(t.id);
             btn.innerHTML = `<div class="btn-info"><span class="btn-name">${t.name}</span><span class="btn-count">[${t.difficulty.toUpperCase()}]</span></div>${compromised?`<div style="color:#00ff00;font-size:11px;">✓ COMPROMISED — +${Math.floor(t.permanentBonus*100)}% passive</div>`:`<div style="color:#666;font-size:11px;margin-top:2px;">Reward: ${formatNumber(t.baseReward)} +${Math.floor(t.permanentBonus*100)}% perm</div><div style="color:${hasAccess?'#00aa00':'#442222'};font-size:11px;">Requires: ${t.requiredLists} list(s) ${hasAccess?'✓':'✗'}</div>`}`;
-            tCont.appendChild(btn);
+            return btn;
         });
 
         // Skills
         const sCont = document.getElementById('skills-container');
-        sCont.innerHTML = '';
         const bw = calculateTotalBandwidth();
-        [
+        const skillDefs = [
             { id: 'dnsAmplification', name: 'DNS Amplification', activate: activateDNSAmplification, desc: lvl => `x${50+(lvl-1)*20} production for 10s` },
             { id: 'broadcastStorm', name: 'Broadcast Storm', activate: activateBroadcastStorm, desc: lvl => `x${10+(lvl-1)*5} production (crash risk)` },
             { id: 'packetInjection', name: 'Packet Injection', activate: activatePacketInjection, desc: lvl => `x${5+(lvl-1)*3} click gain for 15s` }
-        ].forEach(sk => {
+        ];
+        patchContainer(sCont, skillDefs, sk => {
             const skill = GameState.skills[sk.id];
             const nextLvl = skill.level + 1;
             const req = skill.level < skill.maxLevel ? getSkillRequirement(sk.id, nextLvl-1) : null;
@@ -1758,27 +2043,27 @@
             if (sk.id !== 'broadcastStorm' && skill.cooldown > 0) html += `<div style="color:#888;font-size:11px;">Cooldown: ${Math.ceil(skill.cooldown/1000)}s</div>`;
             if (skill.crashed) html += `<div style="color:#ff4444;font-size:11px;">Recovery in progress...</div>`;
             btn.innerHTML = html;
-            sCont.appendChild(btn);
+            return btn;
         });
 
         // Talents
         const talCont = document.getElementById('talents-container');
-        talCont.innerHTML = '';
         const pts = getAvailableTalentPoints();
-        const pInfo = document.createElement('div');
-        pInfo.style.cssText = 'color:#ffaa00;padding:8px 0;';
-        pInfo.textContent = `Available talent points: ${pts} | Earn more by prestiging (processor cores).`;
-        talCont.appendChild(pInfo);
-        Object.entries(TALENT_TREE).forEach(([branch, talents]) => {
-            talents.forEach(t => {
-                const current = GameState.talents[t.id];
-                const btn = document.createElement('button');
-                btn.className = 'upgrade-btn';
-                btn.disabled = current >= t.max || pts < t.cost;
-                btn.onclick = () => levelTalent(t.id, t.cost, t.max);
-                btn.innerHTML = `<div class="btn-info"><span class="btn-name">${branch.toUpperCase()} :: ${t.name}</span><span class="btn-count">[${current}/${t.max}]</span></div><div style="color:#666;font-size:11px;">${t.desc}</div>`;
-                talCont.appendChild(btn);
-            });
+        const talentItems = [{ _header: true, pts }, ...Object.entries(TALENT_TREE).flatMap(([branch, talents]) => talents.map(t => ({ ...t, _branch: branch })))];
+        patchContainer(talCont, talentItems, item => {
+            if (item._header) {
+                const pInfo = document.createElement('div');
+                pInfo.style.cssText = 'color:#ffaa00;padding:8px 0;';
+                pInfo.textContent = `Available talent points: ${item.pts} | Earn more by prestiging (processor cores).`;
+                return pInfo;
+            }
+            const current = GameState.talents[item.id];
+            const btn = document.createElement('button');
+            btn.className = 'upgrade-btn';
+            btn.disabled = current >= item.max || pts < item.cost;
+            btn.onclick = () => levelTalent(item.id, item.cost, item.max);
+            btn.innerHTML = `<div class="btn-info"><span class="btn-name">${item._branch.toUpperCase()} :: ${item.name}</span><span class="btn-count">[${current}/${item.max}]</span></div><div style="color:#666;font-size:11px;">${item.desc}</div>`;
+            return btn;
         });
 
         // Matrix (si actif)
@@ -1813,6 +2098,9 @@
             commandLoadout: GameState.commandLoadout,
             analytics: GameState.analytics,
             uiCollapsed: GameState.uiCollapsed,
+            loadoutCooldownMs: GameState.loadoutRuntime.cooldownMs,
+            regionControl: GameState.regionControl,
+            secretCommandUsage: GameState.secretCommandUsage,
             commandHistory: commandHistory.slice(-100)
         };
         Object.keys(GameState.buildings).forEach(k => d.buildings[k] = GameState.buildings[k].count.toString());
@@ -1877,11 +2165,14 @@
                 if (typeof d.uiCollapsed.objective === 'boolean') GameState.uiCollapsed.objective = d.uiCollapsed.objective;
                 if (typeof d.uiCollapsed.loadout === 'boolean') GameState.uiCollapsed.loadout = d.uiCollapsed.loadout;
             }
+            if (typeof d.loadoutCooldownMs === 'number') GameState.loadoutRuntime.cooldownMs = Math.max(500, d.loadoutCooldownMs);
+            if (d.regionControl) GameState.regionControl = { ...GameState.regionControl, ...d.regionControl };
+            if (d.secretCommandUsage) GameState.secretCommandUsage = { ...GameState.secretCommandUsage, ...d.secretCommandUsage };
             if (Array.isArray(d.commandHistory)) {
                 commandHistory.splice(0, commandHistory.length, ...d.commandHistory.slice(-100));
             }
             refreshSystemFiles();
-            applyTheme(d.uiTheme || localStorage.getItem('swamped_theme') || 'default', false);
+            applyTheme(d.uiTheme || localStorage.getItem('swamped_theme') || 'mono', false);
             // Offline gains
             const offline = (Date.now() - (d.lastSave || Date.now())) / 1000;
             if (offline > 5 && GameState.miningMode !== 'crypto') {
@@ -1890,6 +2181,72 @@
             }
             return true;
         } catch(e) { console.error('Load failed:', e); return false; }
+    }
+
+
+    function md5(input) {
+        function cmn(q, a, b, x, s, t) { a = (a + q + x + t) | 0; return (((a << s) | (a >>> (32 - s))) + b) | 0; }
+        function ff(a, b, c, d, x, s, t) { return cmn((b & c) | (~b & d), a, b, x, s, t); }
+        function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & ~d), a, b, x, s, t); }
+        function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+        function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | ~d), a, b, x, s, t); }
+        function md51(s) {
+            const txt = '';
+            const n = s.length;
+            const state = [1732584193, -271733879, -1732584194, 271733878];
+            let i;
+            for (i = 64; i <= n; i += 64) md5cycle(state, md5blk(s.substring(i - 64, i)));
+            s = s.substring(i - 64);
+            const tail = Array(16).fill(0);
+            for (i = 0; i < s.length; i++) tail[i >> 2] |= s.charCodeAt(i) << ((i % 4) << 3);
+            tail[i >> 2] |= 0x80 << ((i % 4) << 3);
+            if (i > 55) { md5cycle(state, tail); for (i = 0; i < 16; i++) tail[i] = 0; }
+            tail[14] = n * 8;
+            md5cycle(state, tail);
+            return state;
+        }
+        function md5blk(s) {
+            const md5blks = [];
+            for (let i = 0; i < 64; i += 4) md5blks[i >> 2] = s.charCodeAt(i) + (s.charCodeAt(i + 1) << 8) + (s.charCodeAt(i + 2) << 16) + (s.charCodeAt(i + 3) << 24);
+            return md5blks;
+        }
+        function md5cycle(x, k) {
+            let [a, b, c, d] = x;
+            a = ff(a, b, c, d, k[0], 7, -680876936); d = ff(d, a, b, c, k[1], 12, -389564586); c = ff(c, d, a, b, k[2], 17, 606105819); b = ff(b, c, d, a, k[3], 22, -1044525330);
+            a = ff(a, b, c, d, k[4], 7, -176418897); d = ff(d, a, b, c, k[5], 12, 1200080426); c = ff(c, d, a, b, k[6], 17, -1473231341); b = ff(b, c, d, a, k[7], 22, -45705983);
+            a = ff(a, b, c, d, k[8], 7, 1770035416); d = ff(d, a, b, c, k[9], 12, -1958414417); c = ff(c, d, a, b, k[10], 17, -42063); b = ff(b, c, d, a, k[11], 22, -1990404162);
+            a = ff(a, b, c, d, k[12], 7, 1804603682); d = ff(d, a, b, c, k[13], 12, -40341101); c = ff(c, d, a, b, k[14], 17, -1502002290); b = ff(b, c, d, a, k[15], 22, 1236535329);
+            a = gg(a, b, c, d, k[1], 5, -165796510); d = gg(d, a, b, c, k[6], 9, -1069501632); c = gg(c, d, a, b, k[11], 14, 643717713); b = gg(b, c, d, a, k[0], 20, -373897302);
+            a = gg(a, b, c, d, k[5], 5, -701558691); d = gg(d, a, b, c, k[10], 9, 38016083); c = gg(c, d, a, b, k[15], 14, -660478335); b = gg(b, c, d, a, k[4], 20, -405537848);
+            a = gg(a, b, c, d, k[9], 5, 568446438); d = gg(d, a, b, c, k[14], 9, -1019803690); c = gg(c, d, a, b, k[3], 14, -187363961); b = gg(b, c, d, a, k[8], 20, 1163531501);
+            a = gg(a, b, c, d, k[13], 5, -1444681467); d = gg(d, a, b, c, k[2], 9, -51403784); c = gg(c, d, a, b, k[7], 14, 1735328473); b = gg(b, c, d, a, k[12], 20, -1926607734);
+            a = hh(a, b, c, d, k[5], 4, -378558); d = hh(d, a, b, c, k[8], 11, -2022574463); c = hh(c, d, a, b, k[11], 16, 1839030562); b = hh(b, c, d, a, k[14], 23, -35309556);
+            a = hh(a, b, c, d, k[1], 4, -1530992060); d = hh(d, a, b, c, k[4], 11, 1272893353); c = hh(c, d, a, b, k[7], 16, -155497632); b = hh(b, c, d, a, k[10], 23, -1094730640);
+            a = hh(a, b, c, d, k[13], 4, 681279174); d = hh(d, a, b, c, k[0], 11, -358537222); c = hh(c, d, a, b, k[3], 16, -722521979); b = hh(b, c, d, a, k[6], 23, 76029189);
+            a = hh(a, b, c, d, k[9], 4, -640364487); d = hh(d, a, b, c, k[12], 11, -421815835); c = hh(c, d, a, b, k[15], 16, 530742520); b = hh(b, c, d, a, k[2], 23, -995338651);
+            a = ii(a, b, c, d, k[0], 6, -198630844); d = ii(d, a, b, c, k[7], 10, 1126891415); c = ii(c, d, a, b, k[14], 15, -1416354905); b = ii(b, c, d, a, k[5], 21, -57434055);
+            a = ii(a, b, c, d, k[12], 6, 1700485571); d = ii(d, a, b, c, k[3], 10, -1894986606); c = ii(c, d, a, b, k[10], 15, -1051523); b = ii(b, c, d, a, k[1], 21, -2054922799);
+            a = ii(a, b, c, d, k[8], 6, 1873313359); d = ii(d, a, b, c, k[15], 10, -30611744); c = ii(c, d, a, b, k[6], 15, -1560198380); b = ii(b, c, d, a, k[13], 21, 1309151649);
+            a = ii(a, b, c, d, k[4], 6, -145523070); d = ii(d, a, b, c, k[11], 10, -1120210379); c = ii(c, d, a, b, k[2], 15, 718787259); b = ii(b, c, d, a, k[9], 21, -343485551);
+            x[0] = (x[0] + a) | 0; x[1] = (x[1] + b) | 0; x[2] = (x[2] + c) | 0; x[3] = (x[3] + d) | 0;
+        }
+        function rhex(n) { let s = ''; for (let j = 0; j < 4; j++) s += ('0' + ((n >> (j * 8)) & 255).toString(16)).slice(-2); return s; }
+        return md51(input).map(rhex).join('');
+    }
+
+    function triggerSecretEps() {
+        if ((GameState.secretCommandUsage.eps || 0) >= 2) return;
+        GameState.secretCommandUsage.eps = (GameState.secretCommandUsage.eps || 0) + 1;
+        const img = document.createElement('img');
+        img.src = '/img/Eps.png';
+        img.style.cssText = 'position:fixed;inset:0;margin:auto;max-width:55vw;max-height:70vh;z-index:2200;pointer-events:none;filter:drop-shadow(0 0 18px rgba(255,0,0,0.45));';
+        document.body.appendChild(img);
+        setTimeout(() => img.remove(), 1000);
+    }
+
+    function handleSecretCommand(commandText) {
+        const probe = md5(SECRET_SALT + commandText.trim().toLowerCase());
+        if (probe === SECRET_EPS_MD5) triggerSecretEps();
     }
 
     // ================================================
@@ -1926,6 +2283,7 @@
             return;
         }
         addLog(`$ ${cmd}`, 'info');
+        handleSecretCommand(cmd);
         const [base, ...args] = command.split(/\s+/);
         const arg = args[0];
         const commands = {
@@ -1951,8 +2309,20 @@
             },
             theme: () => {
                 if (!arg) { addLog(`Current theme: ${GameState.uiTheme}`,'info'); return; }
-                if (arg === 'list') { addLog(`Themes: default, mono, pink, amber`,'info'); return; }
-                if (!['default','mono','pink','amber'].includes(arg)) { addLog(`Unknown theme '${arg}'`,'error'); return; }
+                if (arg === 'list') {
+                    const paidMap = { blood:'theme_blood_unlock', ruby:'theme_ruby_unlock', cblood:'theme_cblood_unlock', ubuntu:'theme_ubuntu_unlock', powershell:'theme_powershell_unlock', ocean:'theme_ocean_unlock', neon:'theme_neon_unlock', solar:'theme_solar_unlock', void:'theme_void_unlock' };
+                    const paid = Object.keys(paidMap);
+                    const free = ['default','mono','pink','amber'];
+                    const unlocked = paid.filter(t => GameState.blackMarket[paidMap[t]]?.purchased);
+                    const locked = paid.filter(t => !GameState.blackMarket[paidMap[t]]?.purchased);
+                    addLog(`── THEMES ──`, 'warning');
+                    addLog(`▶ Free : ${free.join(', ')}`, 'success');
+                    if (unlocked.length) addLog(`▶ Unlocked : ${unlocked.join(', ')}`, 'success');
+                    if (locked.length) addLog(`▶ Locked  : ${locked.join(', ')} — buy in Black Market`, 'error');
+                    addLog(`Usage: theme <name>  |  Current: ${GameState.uiTheme}`, 'info');
+                    return;
+                }
+                if (!['default','mono','pink','amber','blood','ruby','cblood','ubuntu','powershell','ocean','neon','solar','void'].includes(arg)) { addLog(`Unknown theme '${arg}'. Type 'theme list' to see all.`,'error'); return; }
                 addLog(`Theme switched to ${applyTheme(arg)}`,'success');
             },
             mine: () => {
@@ -2022,18 +2392,15 @@
                 }
                 if (sub === 'run') {
                     const slot = Math.max(1, Math.min(3, parseInt(args[1], 10) || 0));
-                    const cmdValue = GameState.commandLoadout[slot - 1];
-                    if (!cmdValue) { addLog(`Empty loadout slot F${slot}`, 'warning'); return; }
-                    executeCommand(cmdValue);
-                    commandHistory.push(cmdValue);
+                    executeLoadoutSlot(slot - 1);
                     return;
                 }
                 if (sub === 'set') {
                     const slot = Math.max(1, Math.min(3, parseInt(args[1], 10) || 0));
                     const cmdValue = args.slice(2).join(' ').trim();
-                    if (!slot || !cmdValue) { addLog(`Usage: loadout set <1-3> <command>`, 'warning'); return; }
+                    if (!slot) { addLog(`Usage: loadout set <1-3> <command>`, 'warning'); return; }
                     GameState.commandLoadout[slot - 1] = cmdValue;
-                    addLog(`Loadout F${slot} set to: ${cmdValue}`, 'success');
+                    addLog(`Loadout F${slot} set to: ${cmdValue || '(empty)'}`, 'success');
                     updateDisplay(false);
                     saveGame();
                     return;
@@ -2072,7 +2439,7 @@
             if (btn.dataset.tab === 'matrix') {
                 GameState.matrix.unread[GameState.matrix.activeContact] = 0;
                 renderMatrixContacts();
-                renderMatrixMessages();
+                renderMatrixMessages(true);
                 updateMatrixTabBadge();
             }
         });
@@ -2084,9 +2451,9 @@
         }
         if (['F1','F2','F3'].includes(e.key)) {
             e.preventDefault();
+            if (e.repeat) return;
             const slot = Number(e.key.slice(1));
-            const cmdValue = GameState.commandLoadout[slot-1];
-            if (cmdValue) { executeCommand(cmdValue); commandHistory.push(cmdValue); }
+            executeLoadoutSlot(slot-1);
             return;
         }
         if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
@@ -2129,7 +2496,7 @@
         if (!hasConvs) initMatrix();
 
         if (loaded) addLog(`$ Previous session restored`, 'success');
-        else applyTheme(localStorage.getItem('swamped_theme') || 'default', false);
+        else applyTheme(localStorage.getItem('swamped_theme') || 'mono', false);
 
         updateDisplay(false);
         renderMatrixContacts();
@@ -2142,4 +2509,3 @@
     }
 
     init();
-    
