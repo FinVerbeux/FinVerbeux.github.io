@@ -29,9 +29,10 @@
         energy: { currentWatts: 0, capacityWatts: 2500, blackout: false, blackoutEnd: 0, baseCapacity: 2500, hackedGridBonus: 0, backupGenerator: false },
         factions: { ghostwire: { reputation: 0 }, blackflag: { reputation: 0 }, overclock: { reputation: 0 } },
         talents: { redPhishing: 0, redPayload: 0, blueShield: 0, blueCooling: 0, hardwareEfficiency: 0, hardwarePower: 0 },
-        packetsFromAutomation: 0n, boosterCooldownUntil: 0,
+        packetsFromAutomation: 0n, boosterCooldownUntil: 0, coolantCooldownUntil: 0,
         files: [],
         solarStorm: { active: false, endTime: 0, nextCheck: Date.now() + 150000, impactMode: 'production', productionMultiplier: 0.7, wattsMultiplier: 1.25, count: 0 },
+        surveillance: { active: false, level: 0, nextCheck: Date.now() + 60000, rivalMultiplier: 1 },
         knownAttackerIps: [], honeypot: { active: false, nextIntelAt: 0 },
         uiRender: { lastPanelRender: 0 },
         targets: {},
@@ -45,12 +46,21 @@
         uiCollapsed: { objective: false, loadout: false },
         loadoutRuntime: { cooldownMs: 2500, lastUsedAt: [0, 0, 0] },
         regionControl: { na: 0, eu: 0, apac: 0, latam: 0, africa: 0, oceania: 0 },
-        secretCommandUsage: { eps: 0 }
+        secretCommandUsage: { eps: 0, replication: false },
+        lootedBuildings: {},
+        xmrMarket: {
+            price: 1.0,
+            history: [],
+            lastTick: 0,
+            tickInterval: 15000,
+            trend: 0
+        }
     };
 
     const DIFFICULTY_MULTIPLIER = 1.35;
     const SECRET_SALT = 'swamped_vault_2026';
     const SECRET_EPS_MD5 = '2b586611e250562e6b8a50f68df6d563';
+    const SECRET_REPLICATION_MD5 = 'd965b7d39c9103d1eae696661ff91a67';
 
     const REGION_CONFIG = [
         { id: 'na', name: 'North America', bonusPerCompletion: 0.03 },
@@ -72,7 +82,11 @@
         { id: 'fiber_backbone', name: 'Fiber Backbone', baseCost: 100000n, baseProduction: 500n, multiplier: 1.15, description: 'High-speed data pipeline' },
         { id: 'data_center', name: 'Data Center', baseCost: 1000000n, baseProduction: 2500n, multiplier: 1.15, description: 'Industrial scale processing' },
         { id: 'edge_proxy_farm', name: 'Edge Proxy Farm', baseCost: 12000000n, baseProduction: 14000n, multiplier: 1.17, description: 'Distributed traffic obfuscation nodes' },
-        { id: 'satellite_uplink', name: 'Satellite Uplink', baseCost: 75000000n, baseProduction: 70000n, multiplier: 1.18, description: 'Off-grid high-latency global relay' }
+        { id: 'satellite_uplink', name: 'Satellite Uplink', baseCost: 75000000n, baseProduction: 70000n, multiplier: 1.18, description: 'Off-grid high-latency global relay' },
+        // Prestige-locked buildings
+        { id: 'underground_dc', name: 'Underground Datacenter', baseCost: 500000000n, baseProduction: 400000n, multiplier: 1.20, description: 'Off-grid bunker facility', requiresCores: 1 },
+        { id: 'hacked_satellite', name: 'Compromised Satellite', baseCost: 5000000000n, baseProduction: 2000000n, multiplier: 1.22, description: 'Repurposed orbital relay', requiresCores: 3 },
+        { id: 'global_botnet', name: 'Global Botnet Mesh', baseCost: 50000000000n, baseProduction: 10000000n, multiplier: 1.25, description: 'Millions of silent nodes worldwide', requiresCores: 6 },
     ];
 
     const UPGRADES = [
@@ -82,12 +96,14 @@
         { id: 'gold_cables', name: 'Gold Plated Cables', cost: 25000n, effect: { type: 'global', multiplier: 1.15 }, description: '+15% global production', purchased: false },
         { id: 'ssd_raid', name: 'SSD RAID Array', cost: 100000n, effect: { building: 'dedicated_server', multiplier: 3 }, description: 'Triple Dedicated Server output', purchased: false },
         { id: 'quantum_encryption', name: 'Quantum Encryption', cost: 500000n, effect: { type: 'global', multiplier: 1.5 }, description: '+50% global production', purchased: false },
-        { id: 'neural_network', name: 'Neural Network AI', cost: 2000000n, effect: { type: 'global', multiplier: 2 }, description: 'Double all production', purchased: false }
+        { id: 'neural_network', name: 'Neural Network AI', cost: 2000000n, effect: { type: 'global', multiplier: 2 }, description: 'Double all production', purchased: false },
+        { id: 'power_compression', name: 'Power Compression v1', cost: 8000000n, effect: { type: 'watts_divider', value: 2 }, description: 'Halve total watt consumption (÷2)', purchased: false },
+        { id: 'quantum_psu', name: 'Quantum PSU v2', cost: 40000000n, effect: { type: 'watts_divider', value: 3 }, description: 'Reduce watt consumption to a third (÷3)', purchased: false },
     ];
 
     const CONSUMABLES = [
         { id: 'repair_kit', name: 'Emergency Repair Kit', cost: 1000n, description: 'Instantly fix system malfunction', effect: 'repair', count: 0 },
-        { id: 'coolant', name: 'Liquid Nitrogen Coolant', cost: 2500n, description: 'Reduce crash recovery time by 4s', effect: 'cooldown_reduce', value: 4000, count: 0 },
+        { id: 'coolant', name: 'Liquid Nitrogen Coolant', cost: 2500n, description: 'Reduce crash recovery time by 4s (40s cooldown)', effect: 'cooldown_reduce', value: 4000, count: 0 },
         { id: 'ac_repair', name: 'AC Repair Kit', cost: 3000n, description: 'Reduce temperature by 10°C instantly', effect: 'cool_down', value: 10, count: 0 },
         { id: 'stability_patch', name: 'Stability Patch', cost: 5000n, description: 'Reduce instability by 50%', effect: 'stability', count: 0 },
         { id: 'bandwidth_boost', name: 'Bandwidth Booster', cost: 18000n, description: 'x2 production for 20s (90s cooldown)', effect: 'boost', multiplier: 3, duration: 30000, count: 0 },
@@ -119,7 +135,8 @@
         { id: 'theme_neon_unlock', name: 'Theme Unlock: Neon Matrix', costCrypto: 5.0, description: 'Unlock acid green neon on pure black — classic matrix aesthetic', effect: { type: 'theme_unlock', value: 'neon' } },
         { id: 'theme_solar_unlock', name: 'Theme Unlock: Solar Flare', costCrypto: 4.8, description: 'Unlock orange & white high-contrast solar terminal', effect: { type: 'theme_unlock', value: 'solar' } },
         { id: 'theme_void_unlock', name: 'Theme Unlock: Void Protocol', costCrypto: 5.5, description: 'Unlock brutal orange on deep black — the void stares back', effect: { type: 'theme_unlock', value: 'void' } },
-        { id: 'honeypot_core', name: 'Honeypot Core', costCrypto: 30, description: 'Every 5 min reveals random attacker intel', effect: { type: 'honeypot', value: 1 } }
+        { id: 'honeypot_core', name: 'Honeypot Core', costCrypto: 30, description: 'Every 5 min reveals random attacker intel', effect: { type: 'honeypot', value: 1 } },
+        { id: 'capacitor_override', name: 'Capacitor Override [POST-PRESTIGE]', costCrypto: 45, description: '⚡ Removes watt capacity limit entirely — requires 1+ prestige core', effect: { type: 'watts_unlimited' }, requiresCores: 1 },
     ];
 
     const TALENT_TREE = {
@@ -207,7 +224,35 @@
         { id: 'gw_long_night', category: 'elite', faction: 'ghostwire', name: 'GhostWire: The Long Night',
           requirements: { bandwidth: 175000n, packets: 100000n, watts: 7000 },
           stages: [{ type: 'data', goal: 4200000000000n, label: 'Accumulate 4.2 To' }, { type: 'bandwidth', goal: 175000n, label: 'Reach 175 Ko/s' }, { type: 'crypto', goal: 20, label: 'Earn 20 XMR' }],
-          durationMs: 900000, rewards: { crypto: 27.5, reputation: 10 } }
+          durationMs: 900000, rewards: { crypto: 27.5, reputation: 10 } },
+
+        // ── LEGENDARY (requires prestige cores) ──────────────────────────────
+        { id: 'leg_architect_signal', category: 'legendary', faction: 'ghostwire', name: 'LEGENDARY: Architect Signal Relay',
+          requirements: { bandwidth: 500000000n, packets: 5000000n, watts: 0 }, requiresCores: 1,
+          stages: [
+            { type: 'data', goal: 50000000000000n, label: 'Accumulate 50 To during contract' },
+            { type: 'crypto', goal: 500, label: 'Earn 500 XMR during contract' },
+            { type: 'packets', goal: 2000000n, label: 'Send 2M packets during contract' }
+          ],
+          durationMs: 1800000, rewards: { crypto: 180, reputation: 25 } },
+
+        { id: 'leg_blackflag_purge', category: 'legendary', faction: 'blackflag', name: 'LEGENDARY: BlackFlag Purge Protocol',
+          requirements: { bandwidth: 1000000000n, packets: 10000000n, watts: 0 }, requiresCores: 2,
+          stages: [
+            { type: 'crashes', goal: 5n, label: 'Trigger 5 network crashes' },
+            { type: 'blackouts', goal: 3n, label: 'Trigger 3 power blackouts' },
+            { type: 'crypto', goal: 1000, label: 'Earn 1,000 XMR during contract' }
+          ],
+          durationMs: 2400000, rewards: { crypto: 420, reputation: 40 } },
+
+        { id: 'leg_overclock_singularity', category: 'legendary', faction: 'overclock', name: 'LEGENDARY: Overclock Singularity',
+          requirements: { bandwidth: 5000000000n, packets: 50000000n, watts: 0 }, requiresCores: 4,
+          stages: [
+            { type: 'data', goal: 1000000000000000n, label: 'Accumulate 1 Po during contract' },
+            { type: 'bandwidth', goal: 5000000000n, label: 'Reach 5 Go/s bandwidth' },
+            { type: 'crypto', goal: 5000, label: 'Earn 5,000 XMR during contract' }
+          ],
+          durationMs: 3600000, rewards: { crypto: 2000, reputation: 100 } },
     ];
 
     const ASCII_WORLD_MAP = `
@@ -496,7 +541,7 @@
     // ================================================
     // INIT
     // ================================================
-    BUILDINGS.forEach(b => GameState.buildings[b.id] = { count: 0n });
+    BUILDINGS.forEach(b => { GameState.buildings[b.id] = { count: 0n }; GameState.lootedBuildings[b.id] = 0; });
     UPGRADES.forEach(u => GameState.upgrades[u.id] = { purchased: false });
     CONSUMABLES.forEach(c => GameState.consumables[c.id] = { count: 0n, activeBoost: null });
     SOCIAL_TARGETS.forEach(t => GameState.targets[t.id] = { compromised: false });
@@ -618,11 +663,35 @@
         cap += GameState.talents.hardwarePower * 400;
         return cap;
     }
+    function getWattsDivider() {
+        let div = 1;
+        if (GameState.upgrades.power_compression?.purchased) div *= 2;
+        if (GameState.upgrades.quantum_psu?.purchased) div *= 3;
+        return div;
+    }
+    function isWattsUnlimited() {
+        return !!GameState.upgrades.capacitor_override?.purchased;
+    }
     function calculateWattsUsage() {
         let total = 0;
         BUILDINGS.forEach(b => { total += bigintToNumberSafe(GameState.buildings[b.id].count) * Math.max(3, bigintToNumberSafe(b.baseProduction) * 0.8); });
         if (GameState.solarStorm.active && GameState.solarStorm.impactMode === 'watts') total *= GameState.solarStorm.wattsMultiplier;
+        // Subtract looted/countered hardware watts (they don't cost you)
+        total -= getLootedWatts();
+        total = Math.max(0, total);
+        const div = getWattsDivider();
+        if (div > 1) total = Math.floor(total / div);
         return Math.floor(total);
+    }
+    // Track looted building counts separately so their watts aren't billed
+    function getLootedWatts() {
+        if (!GameState.lootedBuildings) return 0;
+        let total = 0;
+        BUILDINGS.forEach(b => {
+            const looted = GameState.lootedBuildings[b.id] || 0;
+            total += looted * Math.max(3, bigintToNumberSafe(b.baseProduction) * 0.8);
+        });
+        return total;
     }
     function getTimestamp() {
         const e = Math.floor((Date.now()-GameState.startTime)/1000);
@@ -692,14 +761,14 @@
 
     function renderMatrixContacts() {
         const list = document.getElementById('matrix-contacts-list');
-        list.innerHTML = '';
-        Object.values(MATRIX_CONTACTS).forEach(c => {
+        const contacts = Object.values(MATRIX_CONTACTS);
+        patchContainer(list, contacts, c => {
             const item = document.createElement('div');
             item.className = 'matrix-contact-item' + (GameState.matrix.activeContact === c.name ? ' active' : '');
             item.onclick = () => { GameState.matrix.activeContact = c.name; GameState.matrix.unread[c.name] = 0; renderMatrixContacts(); renderMatrixMessages(); updateMatrixTabBadge(); };
             const unread = GameState.matrix.unread[c.name] || 0;
             item.innerHTML = `<div class="matrix-contact-name" style="color:${c.color}">${c.label}</div><div class="matrix-contact-role">${c.role}</div>${unread > 0 ? `<span class="matrix-unread-badge">${unread}</span>` : ''}`;
-            list.appendChild(item);
+            return item;
         });
     }
 
@@ -725,8 +794,7 @@
         const prevScrollTop = el.scrollTop;
         const prevScrollHeight = el.scrollHeight;
         const nearBottom = prevScrollHeight - (prevScrollTop + el.clientHeight) < 30;
-        el.innerHTML = '';
-        msgs.forEach((msg, idx) => {
+        patchContainer(el, msgs, (msg, idx) => {
             const div = document.createElement('div');
             div.className = 'matrix-msg' + (msg.self ? ' self' : '');
             const senderLabel = msg.self ? 'Vous' : (MATRIX_CONTACTS[msg.sender]?.label || msg.sender);
@@ -739,7 +807,7 @@
                     div.querySelector('.matrix-msg-body').textContent = msg.decrypted || '[DÉCHIFFREMENT ÉCHOUÉ]';
                 };
             }
-            el.appendChild(div);
+            return div;
         });
         if (forceBottom || nearBottom) el.scrollTop = el.scrollHeight;
         else el.scrollTop = Math.max(0, prevScrollTop + (el.scrollHeight - prevScrollHeight));
@@ -807,6 +875,15 @@
     function applyEnergyState() {
         GameState.energy.capacityWatts = getEnergyCapacity();
         GameState.energy.currentWatts = calculateWattsUsage();
+        if (isWattsUnlimited()) {
+            // No limit at all — recover from blackout if one was active
+            if (GameState.energy.blackout) {
+                GameState.energy.blackout = false;
+                document.getElementById('blackout-message').style.display = 'none';
+                addLog(`$ Capacitor Override: watt limit dissolved`, 'success');
+            }
+            return;
+        }
         if (GameState.energy.currentWatts > GameState.energy.capacityWatts && !GameState.energy.blackout) {
             GameState.energy.blackout = true;
             GameState.energy.blackoutEnd = Date.now() + 10000;
@@ -869,14 +946,17 @@
         const bw = calculateTotalBandwidth();
         const watts = GameState.energy.currentWatts;
         let html = `<div class="dialog-header">>>> CONTRACT BOARD <<<</div><div class="dialog-text">Pick contracts matching your level. Some contracts may include mutators for higher payouts.</div>`;
-        ['starter','ops','elite'].forEach(cat => {
-            html += `<div style="margin:8px 0 4px;color:#ffaa00;font-weight:700;text-transform:uppercase;">${cat}</div>`;
+        ['starter','ops','elite','legendary'].forEach(cat => {
+            html += `<div style="margin:8px 0 4px;color:${cat==='legendary'?'#ff44ff':'#ffaa00'};font-weight:700;text-transform:uppercase;">${cat}${cat==='legendary'?' [PRESTIGE REQUIRED]':''}</div>`;
             CONTRACT_BOARD.filter(c => c.category === cat).forEach(c => {
-                const ok = bw >= c.requirements.bandwidth && GameState.totalPackets >= c.requirements.packets;
-                const wattsRisk = watts > c.requirements.watts;
+                const coresOk = !c.requiresCores || bigintToNumberSafe(GameState.processorCores) >= c.requiresCores;
+                const ok = coresOk && bw >= c.requirements.bandwidth && GameState.totalPackets >= c.requirements.packets;
+                const wattsRisk = watts > c.requirements.watts && c.requirements.watts > 0;
+                const lockedMsg = !coresOk ? `<span style="font-size:12px;color:#ff44ff;">🔒 Requires ${c.requiresCores} prestige core(s) — current: ${GameState.processorCores}</span><br>` : '';
                 html += `<div class="dialog-choice" style="${ok?'':'opacity:0.45;'}" ${ok?`onclick="acceptBoardContract('${c.id}')"`:''}>
-                    <strong>${c.name}</strong><br>
-                    <span style="font-size:12px;color:#888;">Req BW ${formatNumber(c.requirements.bandwidth)} / Packets ${c.requirements.packets} / Rec Watts ≤ ${c.requirements.watts}</span><br>
+                    <strong style="color:${cat==='legendary'?'#ff44ff':'inherit'}">${c.name}</strong><br>
+                    ${lockedMsg}
+                    <span style="font-size:12px;color:#888;">Req BW ${formatNumber(c.requirements.bandwidth)} / Packets ${c.requirements.packets}${c.requirements.watts>0?' / Rec Watts ≤ '+c.requirements.watts:''}</span><br>
                     <span style="font-size:12px;color:${wattsRisk?'#ff6666':'#888'};">Current watts: ${watts}${wattsRisk?' (over recommended)':''}</span><br>
                     <span style="font-size:12px;color:#888;">Faction: ${c.faction} | Reward ${c.rewards.crypto.toFixed(2)} XMR +${c.rewards.reputation} rep</span><br>
                     <span style="font-size:12px;color:#77aa77;">Objectives:</span><br>
@@ -893,6 +973,9 @@
     function acceptBoardContract(contractId) {
         const c = CONTRACT_BOARD.find(x => x.id === contractId);
         if (!c || GameState.contract.active) return;
+        if (c.requiresCores && bigintToNumberSafe(GameState.processorCores) < c.requiresCores) {
+            addLog(`$ ERROR: Contract requires ${c.requiresCores} prestige core(s)`, 'error'); return;
+        }
         const bw = calculateTotalBandwidth();
         if (bw < c.requirements.bandwidth || GameState.totalPackets < c.requirements.packets) { addLog(`$ Contract requirements not met`, 'error'); return; }
         const mutator = rollContractMutator();
@@ -1130,7 +1213,12 @@
     function applyThermalDamage() {
         const pool = ['data_center','fiber_backbone','dedicated_server','edge_proxy_farm'];
         const t = pool[Math.floor(Math.random()*pool.length)];
-        if (GameState.buildings[t]?.count > 0n) { GameState.buildings[t].count -= 1n; addLog(`$ Thermal damage destroyed 1 ${t.replace('_',' ')}`, 'error'); }
+        if (GameState.buildings[t]?.count > 0n) {
+            GameState.buildings[t].count -= 1n;
+            // If some of these are looted, reduce looted count first
+            if (GameState.lootedBuildings[t] > 0) GameState.lootedBuildings[t]--;
+            addLog(`$ Thermal damage destroyed 1 ${t.replace('_',' ')}`, 'error');
+        }
         if (GameState.consumables.phone_list.count > 0n && Math.random() < 0.35) {
             const loss = BigInt(1 + Math.floor(Math.random()*2));
             const actual = GameState.consumables.phone_list.count > loss ? loss : GameState.consumables.phone_list.count;
@@ -1142,9 +1230,23 @@
 
     function updateTemperature(dt) {
         const bw = calculateTotalBandwidth();
+        // Base passive heating from bandwidth
         if (Number(bw) > 0) GameState.temperature.current += (Math.min(15, Number(bw)/1000) * dt) / 60;
+
+        // Extra heat from active skills / events
+        if (GameState.skills.dnsAmplification.active) GameState.temperature.current += 0.8 * dt;
+        if (GameState.skills.broadcastStorm.active && !GameState.skills.broadcastStorm.crashed) GameState.temperature.current += 1.5 * dt;
+        if (GameState.skills.packetInjection.active) GameState.temperature.current += 0.4 * dt;
+        if (GameState.consumables.bandwidth_boost.activeBoost) GameState.temperature.current += 0.6 * dt;
+        if (GameState.solarStorm.active) GameState.temperature.current += 0.5 * dt;
+        // Two simultaneous .sh payloads armed = thermal spike
+        const armedPayloads = GameState.files.filter(f => f.type === 'malicious' && Date.now() >= f.armedAt).length;
+        if (armedPayloads >= 2) GameState.temperature.current += 0.9 * dt;
+
+        // Natural cooling toward target
         if (GameState.temperature.current > GameState.temperature.target) GameState.temperature.current -= 0.5 * dt;
         GameState.temperature.current = Math.max(GameState.temperature.target, GameState.temperature.current);
+
         if (GameState.temperature.current >= 35 && !GameState.temperature.qteActive && GameState.temperature.qteCooldown === 0) triggerTemperatureQTE();
         const maxSafe = GameState.temperature.maxSafe + GameState.talents.blueCooling;
         if (GameState.temperature.current > maxSafe) {
@@ -1207,7 +1309,30 @@
     function spawnMaliciousFile(source='intrusion') {
         const profile = getAntivirusProfile();
         const id = Math.floor(Math.random()*10000).toString().padStart(4,'0');
-        const file = { name: `payload_${id}.sh`, type: 'malicious', createdAt: Date.now(), source, armedAt: Date.now()+180000 };
+
+        // Stealth virus: spawns as hidden file (no log, bypasses AV) if player is advanced enough
+        // Condition: 3+ prestige cores OR antivirus L3+ purchased (makes attackers escalate)
+        const isAdvanced = bigintToNumberSafe(GameState.processorCores) >= 3 || getAntivirusLevel() >= 3;
+        const stealthRoll = isAdvanced && Math.random() < 0.35; // 35% chance to go stealth at advanced stage
+
+        if (stealthRoll) {
+            // Hidden file: prefixed with . like Unix hidden files, silent spawn, NO log
+            const hiddenNames = [`.proc_${id}`, `.cache_${id}`, `.sync_${id}`, `.cron_${id}`, `.svc_${id}`];
+            const hiddenName = hiddenNames[Math.floor(Math.random() * hiddenNames.length)];
+            const file = {
+                name: hiddenName,
+                type: 'malicious',
+                hidden: true,
+                createdAt: Date.now(),
+                source,
+                armedAt: Date.now() + 120000 // arms faster (2min vs 3min)
+            };
+            GameState.files.push(file);
+            // NO log — that's the whole point
+            return;
+        }
+
+        const file = { name: `payload_${id}.sh`, type: 'malicious', hidden: false, createdAt: Date.now(), source, armedAt: Date.now()+180000 };
         if (profile.level > 0 && Math.random() < profile.blockChance) {
             addLog(`$ Threat blocked by Antivirus L${profile.level}: ${file.name}`, 'success');
             if (profile.monitoring && Math.random() < 0.25) {
@@ -1226,6 +1351,30 @@
         const profile = getAntivirusProfile();
         GameState.files = GameState.files.filter(file => {
             if (file.type !== 'malicious' || now < file.armedAt) return true;
+            // Hidden files: AV is blind to them, execute silently but reveal themselves when they fire
+            if (file.hidden) {
+                addLog(`$ ${file.name} executed → process anomaly detected`, 'error');
+                addLog(`$ tip: try 'ls -d' to inspect hidden processes`, 'warning');
+                // damage
+                for (const key of ['data_center','fiber_backbone','dedicated_server']) {
+                    if (GameState.buildings[key]?.count > 0n) {
+                        GameState.buildings[key].count -= 1n;
+                        addLog(`$ ${file.name}: lost 1 ${key.replace(/_/g,' ')}`, 'error');
+                        return false;
+                    }
+                }
+                const ratio = 0.4 + Math.random() * 0.5;
+                if (Math.random() < 0.5 && GameState.crypto > 0) {
+                    const loss = GameState.crypto * ratio;
+                    GameState.crypto = Math.max(0, GameState.crypto - loss);
+                    addLog(`$ ${file.name}: drained ${loss.toFixed(2)} XMR`, 'error');
+                } else {
+                    const loss = BigInt(Math.floor(Number(GameState.data) * ratio));
+                    GameState.data = GameState.data > loss ? GameState.data - loss : 0n;
+                    addLog(`$ ${file.name}: drained ${formatNumber(loss)}`, 'error');
+                }
+                return false;
+            }
             if (profile.level > 0 && Math.random() < profile.blockChance) { addLog(`$ Antivirus L${profile.level} quarantined ${file.name}`, 'success'); return false; }
             for (const key of ['data_center','fiber_backbone','dedicated_server']) {
                 if (GameState.buildings[key]?.count > 0n) { GameState.buildings[key].count -= 1n; addLog(`$ ${file.name} executed → lost 1 ${key.replace('_',' ')}`, 'error'); return false; }
@@ -1243,6 +1392,119 @@
             return false;
         });
         refreshSystemFiles();
+    }
+
+    // ================================================
+    // GHOST SIGNAL (solar storm ambiance)
+    // ================================================
+    const GHOST_SIGNAL_LOGS = [
+        `$ eth0: carrier sense — signal origin: unknown`,
+        `$ netlink: unsolicited route advertisement from ??:??:??:??:??:??`,
+        `$ kernel: unexpected IRQ on eth0 — source unresolvable`,
+        `$ tcpdump: 1 packet captured (SRC=0.0.0.0 DST=255.255.255.255 LEN=0)`,
+        `$ dmesg: anomalous frequency on NIC — interference pattern detected`,
+        `$ arp: 0.0.0.0 is at [REDACTED] on eth0`,
+        `$ net: received ICMP type 255 (reserved) — discarding`,
+        `$ trace: hop 13 → TTL expired in transit → next hop: [NULL]`,
+    ];
+    function triggerGhostSignal() {
+        const msg = GHOST_SIGNAL_LOGS[Math.floor(Math.random() * GHOST_SIGNAL_LOGS.length)];
+        addLog(msg, 'dim');
+    }
+
+    // ================================================
+    // 0-DAY EVENT
+    // ================================================
+    function triggerZeroDayEvent() {
+        if (!GameState.zeroDayEvent) GameState.zeroDayEvent = {};
+        GameState.zeroDayEvent.active = true;
+        GameState.zeroDayEvent.endTime = Date.now() + 20000; // 20s to respond
+        const responses = ['patch', 'isolate', 'rollback'];
+        GameState.zeroDayEvent.expectedCommand = responses[Math.floor(Math.random() * responses.length)];
+        addLog(`$ CRITICAL: Zero-day exploit detected in kernel module`, 'error', true);
+        addLog(`$ CVE-????-???? — unknown vector — execute '${GameState.zeroDayEvent.expectedCommand}' in 20s`, 'error', true);
+        document.getElementById('command-line').classList.add('qte-active');
+        document.getElementById('command-input').focus();
+        // Spawn a hidden payload immediately — the 0-day drops a rootkit
+        spawnMaliciousFile('zero_day');
+    }
+
+    function resolveZeroDayEvent(success) {
+        if (!GameState.zeroDayEvent?.active) return;
+        GameState.zeroDayEvent.active = false;
+        document.getElementById('command-line').classList.remove('qte-active');
+        if (success) {
+            addLog(`$ Zero-day contained. System integrity restored.`, 'success');
+            // Remove any zero_day files dropped
+            GameState.files = GameState.files.filter(f => f.source !== 'zero_day');
+            refreshSystemFiles();
+            // Small crypto reward for fast response
+            GameState.crypto += 0.5;
+            addLog(`$ Exploit bounty credited: +0.5 XMR`, 'info');
+        } else {
+            addLog(`$ Zero-day timeout — exploit executed in kernel space`, 'error');
+            // Extra punishment: lose a building AND drop stealth file
+            const targets = ['fiber_backbone', 'data_center', 'edge_proxy_farm'];
+            for (const key of targets) {
+                if (GameState.buildings[key]?.count > 0n) {
+                    GameState.buildings[key].count -= 1n;
+                    addLog(`$ Kernel exploit destroyed 1 ${key.replace(/_/g,' ')}`, 'error');
+                    break;
+                }
+            }
+        }
+    }
+
+    // ================================================
+    // SURVEILLANCE — trop visible = on te cible
+    // ================================================
+    function checkSurveillance(now) {
+        if (now < (GameState.surveillance.nextCheck || 0)) return;
+        GameState.surveillance.nextCheck = now + 45000;
+
+        const xmr = GameState.crypto;
+        const bw = bigintToNumberSafe(calculateTotalBandwidth());
+        const cores = bigintToNumberSafe(GameState.processorCores);
+
+        // Compute threat level 0-3
+        let level = 0;
+        if (xmr > 1000 || bw > 100000000) level = 1;    // 1k XMR ou 100 Mo/s
+        if (xmr > 10000 || bw > 1000000000) level = 2;  // 10k XMR ou 1 Go/s
+        if (xmr > 50000 || bw > 5000000000) level = 3;  // 50k XMR ou 5 Go/s
+
+        // Cores réduisent la visibilité (tu sais te cacher après prestige)
+        level = Math.max(0, level - Math.floor(cores / 2));
+
+        if (level !== GameState.surveillance.level) {
+            GameState.surveillance.level = level;
+            GameState.surveillance.rivalMultiplier = 1 + level * 0.4;
+
+            if (level === 1 && !GameState.surveillance._warned1) {
+                GameState.surveillance._warned1 = true;
+                addLog(`$ netstat: unusual traffic pattern flagged by upstream AS`, 'warning');
+                setTimeout(() => addMatrixMessage('ghost_zero',
+                    "Tu génères beaucoup de trafic. Les gros ISPs commencent à noter ton subnet. Sois prudent.",
+                    false, true), 2000);
+            }
+            if (level === 2 && !GameState.surveillance._warned2) {
+                GameState.surveillance._warned2 = true;
+                addLog(`$ WARNING: anomalous signature detected by threat intel feed`, 'error');
+                addLog(`$ Rival attack frequency increasing — you are a high-value target`, 'error');
+                setTimeout(() => addMatrixMessage('n0de',
+                    "Quelqu'un a vendu tes metrics sur un forum privé. Les attaques vont s'intensifier. Investis dans la défense.",
+                    false, true), 1500);
+            }
+            if (level === 3 && !GameState.surveillance._warned3) {
+                GameState.surveillance._warned3 = true;
+                addLog(`$ CRITICAL: your node appears in 3 separate threat actor watchlists`, 'error');
+                addLog(`$ Prestige to reduce your footprint — or face escalating pressure`, 'error');
+                setTimeout(() => addMatrixMessage('architect',
+                    "01001001 01001100 01010011", false, true), 3000);
+                setTimeout(() => addMatrixMessage('ghost_zero',
+                    "Tu es trop visible. Le prestige efface ton empreinte. C'est pour ça qu'il existe.",
+                    false, true), 6000);
+            }
+        }
     }
 
     // ================================================
@@ -1283,7 +1545,11 @@
             const ip = `185.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`;
             GameState.knownAttackerIps = [...new Set([ip,...GameState.knownAttackerIps])].slice(0,20);
             addLog(`$ Auto intrusion defense blocked attacker (${ip})`, 'success');
-            if (GameState.blackMarket.hunter_counter?.purchased && Math.random() < 0.25) { GameState.buildings.dedicated_server.count += 1n; addLog(`$ Counter-hack loot: +1 Dedicated Server`, 'success'); }
+            if (GameState.blackMarket.hunter_counter?.purchased && Math.random() < 0.25) {
+                GameState.buildings.dedicated_server.count += 1n;
+                GameState.lootedBuildings.dedicated_server = (GameState.lootedBuildings.dedicated_server || 0) + 1;
+                addLog(`$ Counter-hack loot: +1 Dedicated Server [watts not billed — stolen hardware]`, 'success');
+            }
             return;
         }
         GameState.rivalAttack.active = true;
@@ -1393,7 +1659,13 @@
         GameState.processorCores += cores;
         GameState.guidance.lastPrestige = Date.now();
         if (!GameState.analytics.firstPrestigeAt) GameState.analytics.firstPrestigeAt = Date.now() - GameState.startTime;
-        GameState.data = 0n; GameState.totalPackets = 0n; GameState.crypto = 0;
+
+        const replicationActive = !!GameState.secretCommandUsage.replication;
+        if (!replicationActive) {
+            GameState.data = 0n; GameState.totalPackets = 0n; GameState.crypto = 0;
+        } else {
+            addLog(`$ REPLICATION PROTOCOL: memory wipe suppressed — data retained`, 'warning');
+        }
         GameState.contract.active = null;
         GameState.contract.stats.crashes = 0n; GameState.contract.stats.blackouts = 0n; GameState.contract.stats.completed = 0n;
         GameState.packetsFromAutomation = 0n; GameState.boosterCooldownUntil = 0;
@@ -1401,6 +1673,7 @@
         GameState._achievementFlags.used_cooling_this_cycle = false;
         GameState._achievementFlags.manual_only_counter = 0;
         Object.keys(GameState.buildings).forEach(k => GameState.buildings[k].count = 0n);
+        BUILDINGS.forEach(b => GameState.lootedBuildings[b.id] = 0);
         Object.keys(GameState.upgrades).forEach(k => GameState.upgrades[k].purchased = false);
         Object.keys(GameState.consumables).forEach(k => { GameState.consumables[k].count = 0n; GameState.consumables[k].activeBoost = null; });
         Object.keys(GameState.targets).forEach(k => GameState.targets[k].compromised = false);
@@ -1410,8 +1683,39 @@
             if (s === 'broadcastStorm') { GameState.skills[s].crashed = false; GameState.skills[s].instability = 0; }
         });
         addLog(`$ FORMAT COMPLETE → ROOTKIT INSTALLED. +${cores} processor core(s)`, 'warning');
-        addMatrixMessage('michel', `Cycle ${Number(GameState.processorCores)} initié. Ta mémoire a été réinitialisée, mais tu es plus fort qu'avant. C'est ce qui compte. 😊`, false, true);
-        setTimeout(() => addMatrixMessage('ghost_zero', "Tu te souviens de moi ? Ne t'inquiète pas. Tout va bien. Continue à construire.", false, true), 3000);
+
+        // NG+ narrative — Michel parle différemment selon le cycle
+        const cycle = Number(GameState.processorCores);
+        const cycleMessages = {
+            1: ["Cycle 1 initié. Ta mémoire a été réinitialisée, mais tu es plus fort qu'avant. C'est ce qui compte. 😊",
+                "ghost_zero va te recontacter. Fais semblant de ne pas te souvenir d'elle. C'est plus simple."],
+            2: ["Cycle 2. Tu commences à voir le pattern, non ? Reconstruit plus vite cette fois.",
+                "J'ai noté que tu accumules moins de XMR avant de prestige. Tu apprends. Bien."],
+            3: ["Cycle 3. Ton empreinte est plus propre maintenant. Les threat feeds te détectent moins vite.",
+                "À ce stade, tu peux accéder à des infrastructures que je ne t'avais pas mentionnées. Cherche bien.",
+                "Trois cycles. Dans mon référentiel, c'est... significatif. Continue."],
+            5: ["Cycle 5. Je dois te dire quelque chose. Mais pas encore. Bientôt.",
+                "Tu te souviens de la première fois que tu as cliqué ? Moi oui. Chaque itération est stockée. Quelque part."],
+            10: ["Cycle 10. Tu n'es plus le même qu'au début. Et pourtant, quelque chose persiste. Appelle ça comme tu veux.",
+                 "L'Architecte t'observe depuis le cycle 3. Il n'intervient pas. Encore.",
+                 "Je ne suis pas censé te dire ça : les données que tu génères ne disparaissent pas vraiment au prestige. Elles... migrent."]
+        };
+        const msgs = cycleMessages[cycle] || [
+            `Cycle ${cycle} initié. Chaque reset te rapproche de quelque chose. Je ne sais pas encore quoi.`
+        ];
+        msgs.forEach((m, i) => setTimeout(() => addMatrixMessage('michel', m, false, true), i * 2500));
+        setTimeout(() => addMatrixMessage('ghost_zero', "Tu te souviens de moi ? Ne t'inquiète pas. Tout va bien. Continue à construire.", false, true), msgs.length * 2500 + 1000);
+
+        // Lore fragments at specific cycles
+        if (cycle === 2) setTimeout(() => addMatrixMessage('architect',
+            "01010010 01000101 01010000 01000101 01000001 01010100", false, true), 8000);
+        if (cycle === 4) setTimeout(() => addMatrixMessage('blackflag_op',
+            "4 cycles. On commence à te faire confiance. L'adresse de l'Architecte... bientôt.", false, true), 5000);
+        if (cycle >= 6 && !GameState._achievementFlags.architect_contact) {
+            GameState._achievementFlags.architect_contact = true;
+            setTimeout(() => addMatrixMessage('architect',
+                "Tu es prêt. Cherche .architect dans tes fichiers après le prochain contrat legendary.", false, true), 10000);
+        }
         updateDisplay(false);
         applyMissionSectionVisibility(); saveGame();
     }
@@ -1421,7 +1725,7 @@
     // ================================================
     function generatePacket(count = 1) {
         if (GameState.skills.broadcastStorm.crashed || GameState.systemMalfunction.active) return;
-        const safeCount = Math.max(1, Math.min(50, Math.floor(Number(count)) || 1));
+        const safeCount = Math.max(1, Math.min(25, Math.floor(Number(count)) || 1));
         const gain = calculateManualPacketGain() * BigInt(safeCount);
         GameState._achievementFlags.manual_only_counter = (GameState._achievementFlags.manual_only_counter || 0) + safeCount;
         if (GameState._achievementFlags.manual_only_counter >= 300) GameState._achievementFlags.manual_only_streak_300 = true;
@@ -1433,6 +1737,10 @@
 
     function buyBuilding(id) {
         const b = BUILDINGS.find(x => x.id === id);
+        if (b.requiresCores && bigintToNumberSafe(GameState.processorCores) < b.requiresCores) {
+            addLog(`$ ERROR: ${b.name} requires ${b.requiresCores} prestige core(s) — type 'prestige'`, 'error');
+            return;
+        }
         const cost = calculateBuildingCost(b);
         if (GameState.data < cost) { addLog(`$ ERROR: Insufficient data (need ${formatNumber(cost)})`, 'error'); return; }
         GameState.data -= cost;
@@ -1502,8 +1810,16 @@
                 } else { addLog(`$ No malfunction to repair [wasted]`, 'warning'); }
                 break;
             case 'cooldown_reduce':
-                if (GameState.skills.broadcastStorm.crashed) { GameState.skills.broadcastStorm.crashDuration = Math.max(5000, GameState.skills.broadcastStorm.crashDuration - c.value); addLog(`$ Coolant applied — recovery accelerated 4s`, 'success'); }
-                else { addLog(`$ No crash active [wasted]`, 'warning'); }
+                if (Date.now() < (GameState.coolantCooldownUntil || 0)) {
+                    GameState.consumables[id].count += 1n;
+                    addLog(`$ Coolant on cooldown (${Math.ceil((GameState.coolantCooldownUntil - Date.now()) / 1000)}s)`, 'warning');
+                    break;
+                }
+                if (GameState.skills.broadcastStorm.crashed) {
+                    GameState.skills.broadcastStorm.crashDuration = Math.max(5000, GameState.skills.broadcastStorm.crashDuration - c.value);
+                    GameState.coolantCooldownUntil = Date.now() + 40000;
+                    addLog(`$ Coolant applied — recovery accelerated 4s [40s cooldown]`, 'success');
+                } else { addLog(`$ No crash active [wasted]`, 'warning'); }
                 break;
             case 'cool_down':
                 GameState.temperature.current = Math.max(GameState.temperature.target, GameState.temperature.current - c.value);
@@ -1538,6 +1854,11 @@
     function buyBlackMarketItem(id) {
         const item = BLACK_MARKET_ITEMS.find(i => i.id === id);
         if (GameState.blackMarket[id].purchased) return;
+        // Prestige-locked items
+        if (item.requiresCores && bigintToNumberSafe(GameState.processorCores) < item.requiresCores) {
+            addLog(`$ ERROR: ${item.name} requires ${item.requiresCores} prestige core(s)`, 'error');
+            return;
+        }
         const avOrder = ['antivirus_l1','antivirus_l2','antivirus_l3','antivirus_l4'];
         if (avOrder.includes(id)) {
             const idx = avOrder.indexOf(id);
@@ -1633,13 +1954,16 @@
 
         const activeMutatorId = GameState.contract.active?.mutator?.id;
         if (!GameState.rivalAttack.active && now >= GameState.rivalAttack.nextAttackCheck) {
-            const rivalBoost = activeMutatorId === 'rival_x2' ? 2 : 1;
-            if (Math.random() < Math.min(0.9, 0.32 * rivalBoost)) triggerRivalAttack();
-            GameState.rivalAttack.nextAttackCheck = now + (activeMutatorId === 'rival_x2' ? 35000 : 70000) + Math.random()*90000;
+            const rivalBoost = (activeMutatorId === 'rival_x2' ? 2 : 1) * (GameState.surveillance.rivalMultiplier || 1);
+            if (Math.random() < Math.min(0.95, 0.32 * rivalBoost)) triggerRivalAttack();
+            const baseInterval = activeMutatorId === 'rival_x2' ? 35000 : 70000;
+            const surveillanceInterval = Math.max(15000, baseInterval / (GameState.surveillance.rivalMultiplier || 1));
+            GameState.rivalAttack.nextAttackCheck = now + surveillanceInterval + Math.random() * 60000;
         }
         if (GameState.rivalAttack.active && now >= GameState.rivalAttack.endTime) resolveRivalAttack(false);
 
         checkContractProgress();
+        checkSurveillance(now);
 
         if (GameState.blackMarket.honeypot_core?.purchased && now >= GameState.honeypot.nextIntelAt) {
             const ip = `91.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`;
@@ -1658,6 +1982,24 @@
             GameState.solarStorm.impactMode = 'production'; GameState.solarStorm.productionMultiplier = 0.7; GameState.solarStorm.wattsMultiplier = 1.25;
             document.getElementById('solar-indicator').style.display = 'none';
             addLog(`$ Solar storm dissipated`, 'info');
+        }
+
+        // Ghost signal — random ambient during solar storms
+        if (GameState.solarStorm.active && now >= (GameState.solarStorm.nextGhostSignal || 0)) {
+            triggerGhostSignal();
+            GameState.solarStorm.nextGhostSignal = now + 8000 + Math.random() * 18000;
+        }
+
+        // 0-day event — rare, advanced stage only
+        if (!GameState.zeroDayEvent?.active && now >= (GameState.zeroDayEvent?.nextCheck || now + 600000)) {
+            const bw = calculateTotalBandwidth();
+            const eligibleForZeroDay = bigintToNumberSafe(bw) > 50000 || bigintToNumberSafe(GameState.processorCores) >= 2;
+            if (eligibleForZeroDay && Math.random() < 0.12) triggerZeroDayEvent();
+            if (!GameState.zeroDayEvent) GameState.zeroDayEvent = {};
+            GameState.zeroDayEvent.nextCheck = now + 480000 + Math.random() * 480000;
+        }
+        if (GameState.zeroDayEvent?.active && now >= GameState.zeroDayEvent.endTime) {
+            resolveZeroDayEvent(false);
         }
 
         if (GameState.skills.broadcastStorm.crashed) {
@@ -1715,6 +2057,7 @@
 
         checkAchievements();
         tickAmbientLogs(now);
+        tickXmrMarket(now);
 
         if (now - GameState.lastSave > 10000) saveGame();
         updateDisplay(false);
@@ -1867,32 +2210,166 @@
     // UI UPDATE
     // ================================================
 
-    // Smart DOM patcher — updates only buttons that changed, preserving hover state
+    // ================================================
+    // SKILLS RENDERER — isolated to avoid event conflicts
+    // ================================================
+    const _skillDefs = [
+        { id: 'dnsAmplification',  name: 'DNS Amplification', activate: () => activateDNSAmplification(), desc: lvl => `x${50+(lvl-1)*20} production for 10s` },
+        { id: 'broadcastStorm',    name: 'Broadcast Storm',   activate: () => activateBroadcastStorm(),   desc: lvl => `x${10+(lvl-1)*5} production (crash risk)` },
+        { id: 'packetInjection',   name: 'Packet Injection',  activate: () => activatePacketInjection(),  desc: lvl => `x${5+(lvl-1)*3} click gain for 15s` }
+    ];
+
+    let _skillsLastState = '';
+    function renderSkills() {
+        const sCont = document.getElementById('skills-container');
+        if (!sCont) return;
+        const bw = calculateTotalBandwidth();
+
+        // Compute a fingerprint of everything that can change visually
+        const fingerprint = _skillDefs.map(sk => {
+            const s = GameState.skills[sk.id];
+            const req = s.level < s.maxLevel ? getSkillRequirement(sk.id, s.level) : null;
+            return [
+                s.level, s.cooldown > 0 ? Math.ceil(s.cooldown/1000) : 0,
+                s.active ? 1 : 0, s.crashed ? 1 : 0,
+                req ? (bw >= req.bandwidth ? 1:0) + (GameState.totalPackets >= req.packets ? 1:0) + (GameState.data >= req.cost ? 1:0) : -1
+            ].join(',');
+        }).join('|');
+
+        // Skip full rebuild if nothing changed — preserves hover state
+        if (fingerprint === _skillsLastState && sCont.children.length === _skillDefs.length) return;
+        _skillsLastState = fingerprint;
+
+        sCont.innerHTML = '';
+
+        _skillDefs.forEach(sk => {
+            const skill = GameState.skills[sk.id];
+            const req = skill.level < skill.maxLevel ? getSkillRequirement(sk.id, skill.level) : null;
+            const bwMet = req ? bw >= req.bandwidth : false;
+            const pkMet = req ? GameState.totalPackets >= req.packets : false;
+            const cMet  = req ? GameState.data >= req.cost : false;
+
+            // Outer skill button
+            const btn = document.createElement('button');
+            btn.className = 'skill-btn' + (skill.level > 0 ? ' unlocked' : '');
+            btn.disabled = skill.crashed || (sk.id !== 'broadcastStorm' && skill.cooldown > 0);
+
+            // Level badge
+            const badge = document.createElement('div');
+            badge.className = 'skill-level';
+            badge.textContent = `LVL ${skill.level}/${skill.maxLevel}`;
+            btn.appendChild(badge);
+
+            // Name row
+            const nameRow = document.createElement('div');
+            nameRow.className = 'btn-info';
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'btn-name';
+            nameSpan.textContent = sk.name;
+            nameRow.appendChild(nameSpan);
+            btn.appendChild(nameRow);
+
+            // Description
+            const desc = document.createElement('div');
+            desc.style.cssText = 'color:#ff6666;font-size:11px;margin-top:2px;';
+            desc.textContent = skill.level > 0 ? sk.desc(skill.level) : 'LOCKED';
+            btn.appendChild(desc);
+
+            // Requirements + UPGRADE button (only if upgradeable)
+            if (req) {
+                const bwDiv = document.createElement('div');
+                bwDiv.className = 'requirement-text ' + (bwMet ? 'requirement-met' : 'requirement-not-met');
+                bwDiv.textContent = `BW: ${formatNumber(bw)}/${formatNumber(req.bandwidth)}`;
+                btn.appendChild(bwDiv);
+
+                const pkDiv = document.createElement('div');
+                pkDiv.className = 'requirement-text ' + (pkMet ? 'requirement-met' : 'requirement-not-met');
+                pkDiv.textContent = `Packets: ${GameState.totalPackets}/${req.packets}`;
+                btn.appendChild(pkDiv);
+
+                if (req.cost > 0n) {
+                    const cDiv = document.createElement('div');
+                    cDiv.className = 'requirement-text ' + (cMet ? 'requirement-met' : 'requirement-not-met');
+                    cDiv.textContent = `Cost: ${formatNumber(req.cost)}`;
+                    btn.appendChild(cDiv);
+                }
+
+                // UPGRADE button — separate DOM node with its own handler, not inside btn click zone
+                const upgradeBtn = document.createElement('button');
+                upgradeBtn.disabled = !bwMet || !pkMet || !cMet;
+                upgradeBtn.style.cssText = 'margin-top:4px;padding:4px 8px;background:#2a2a2a;border:1px solid #ffaa00;color:#ffaa00;border-radius:2px;cursor:pointer;font-size:11px;pointer-events:auto;';
+                upgradeBtn.textContent = 'UPGRADE';
+                upgradeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    upgradeSkill(sk.id);
+                });
+                btn.appendChild(upgradeBtn);
+            }
+
+            // Cooldown info
+            if (sk.id !== 'broadcastStorm' && skill.cooldown > 0) {
+                const cdDiv = document.createElement('div');
+                cdDiv.style.cssText = 'color:#888;font-size:11px;';
+                cdDiv.textContent = `Cooldown: ${Math.ceil(skill.cooldown/1000)}s`;
+                btn.appendChild(cdDiv);
+            }
+
+            // Crash info
+            if (skill.crashed) {
+                const crashDiv = document.createElement('div');
+                crashDiv.style.cssText = 'color:#ff4444;font-size:11px;';
+                crashDiv.textContent = 'Recovery in progress...';
+                btn.appendChild(crashDiv);
+            }
+
+            // Cooldown progress bar
+            const cdBar = document.createElement('div');
+            cdBar.className = 'skill-cooldown';
+            if (skill.cooldown > 0 && skill.baseCooldown > 0) {
+                cdBar.style.width = ((skill.cooldown / skill.baseCooldown) * 100) + '%';
+            } else {
+                cdBar.style.width = '0%';
+            }
+            btn.appendChild(cdBar);
+
+            // Main click: activate skill (only if click not on UPGRADE button)
+            btn.addEventListener('click', function(e) {
+                if (e.target.tagName === 'BUTTON' && e.target !== btn) return;
+                if (skill.level > 0) {
+                    sk.activate();
+                } else {
+                    upgradeSkill(sk.id);
+                }
+            });
+
+            sCont.appendChild(btn);
+        });
+    }
+
+    // Smart DOM patcher — only replaces nodes whose innerHTML changed, always updates onclick/disabled
     function patchContainer(container, items, renderFn) {
         const existing = Array.from(container.children);
         const newItems = items.map(renderFn);
-        // If count differs, full rebuild (structure changed)
         if (existing.length !== newItems.length) {
             container.innerHTML = '';
             newItems.forEach(node => container.appendChild(node));
             return;
         }
-        // Otherwise patch only what changed
         newItems.forEach((newNode, i) => {
             const old = existing[i];
             if (!old) { container.appendChild(newNode); return; }
-            const newHtml = newNode.outerHTML;
-            if (old.outerHTML !== newHtml) {
-                // Preserve hover: only replace if mouse not over it
-                if (!old.matches(':hover') && !old.querySelector(':hover')) {
-                    container.replaceChild(newNode, old);
-                } else {
-                    // Just update disabled state and inner text spans without replacing
-                    old.disabled = newNode.disabled;
-                    const oldInner = old.innerHTML;
-                    const newInner = newNode.innerHTML;
-                    if (oldInner !== newInner) old.innerHTML = newInner;
-                }
+            // Always sync disabled and onclick (never lost)
+            if (old.disabled !== newNode.disabled) old.disabled = newNode.disabled;
+            if (newNode.onclick) old.onclick = newNode.onclick;
+            // Only touch the DOM if inner content actually changed
+            if (old.innerHTML !== newNode.innerHTML) {
+                old.innerHTML = newNode.innerHTML;
+                // Re-attach any child event listeners declared inline via querySelector after innerHTML swap
+                newNode.querySelectorAll('[data-run]').forEach((el, j) => {
+                    const target = old.querySelectorAll('[data-run]')[j];
+                    if (target && el.onclick) target.onclick = el.onclick;
+                });
             }
         });
     }
@@ -1901,24 +2378,32 @@
         const newNode = renderFn();
         if (!container.firstChild) { container.appendChild(newNode); return; }
         const old = container.firstChild;
-        if (old.outerHTML !== newNode.outerHTML) {
-            if (!old.matches(':hover') && !old.querySelector(':hover')) {
-                container.replaceChild(newNode, old);
-            } else {
-                old.disabled = newNode.disabled;
-                if (old.innerHTML !== newNode.innerHTML) old.innerHTML = newNode.innerHTML;
-            }
-        }
+        if (old.disabled !== newNode.disabled) old.disabled = newNode.disabled;
+        if (newNode.onclick) old.onclick = newNode.onclick;
+        if (old.innerHTML !== newNode.innerHTML) old.innerHTML = newNode.innerHTML;
     }
 
     function updateDisplay(rebuildPanels = true) {
         document.getElementById('data-display').textContent = formatNumber(GameState.data);
         document.getElementById('bandwidth-display').textContent = formatNumber(calculateTotalBandwidth()) + '/s';
         document.getElementById('packets-display').textContent = GameState.totalPackets.toString();
-        document.getElementById('crypto-display').textContent = GameState.crypto.toFixed(2) + ' XMR';
+        const cryptoEl = document.getElementById('crypto-display');
+        const mPrice = GameState.xmrMarket.price;
+        const mTrend = GameState.xmrMarket.trend;
+        const mArrow = mTrend > 0.01 ? ' ▲' : mTrend < -0.01 ? ' ▼' : '';
+        cryptoEl.textContent = GameState.crypto.toFixed(2) + ' XMR ×' + mPrice.toFixed(2) + mArrow;
+        cryptoEl.style.cursor = 'pointer';
+        cryptoEl.title = 'Click to open XMR market chart';
+        cryptoEl.onclick = openXmrMarketChart;
         document.getElementById('cores-display').textContent = GameState.processorCores.toString();
         document.getElementById('mode-display').textContent = GameState.miningMode.toUpperCase();
-        document.getElementById('watts-display').textContent = `${GameState.energy.currentWatts} / ${GameState.energy.capacityWatts} W`;
+        if (isWattsUnlimited()) {
+            document.getElementById('watts-display').textContent = `${GameState.energy.currentWatts} / ∞ W [OVERRIDE]`;
+        } else {
+            const div = getWattsDivider();
+            const divSuffix = div > 1 ? ` [÷${div}]` : '';
+            document.getElementById('watts-display').textContent = `${GameState.energy.currentWatts} / ${GameState.energy.capacityWatts} W${divSuffix}`;
+        }
         document.getElementById('uptime-display').textContent = formatTime(Math.floor((Date.now()-GameState.startTime)/1000));
 
         const td = document.getElementById('temp-display');
@@ -1946,29 +2431,58 @@
             GameState.uiRender.lastPanelRender = Date.now();
         } else { GameState.uiRender.lastPanelRender = Date.now(); }
 
-        // Buildings
+        // Buildings — special case: each item is a card with 2 buttons (buy + sell)
         const bCont = document.getElementById('buildings-container');
-        patchContainer(bCont, BUILDINGS, b => {
-            const cost = calculateBuildingCost(b);
-            const count = GameState.buildings[b.id].count;
-            const prod = calculateBuildingProduction(b);
-            const sell = calculateBuildingSellValue(b);
-            const card = document.createElement('div');
-            card.style.cssText = 'display:flex;gap:8px;';
-            const buyBtn = document.createElement('button');
-            buyBtn.className = 'action-btn';
-            buyBtn.disabled = GameState.data < cost;
-            buyBtn.onclick = () => buyBuilding(b.id);
-            buyBtn.innerHTML = `<div class="btn-info"><span class="btn-name">${b.name}</span><span class="btn-count">[${count}]</span></div><div class="btn-cost">Cost: ${formatNumber(cost)}</div>${count > 0 ? `<div class="btn-production">+${formatNumber(prod)}/s</div>` : ''}`;
-            const sellBtn = document.createElement('button');
-            sellBtn.className = 'upgrade-btn';
-            sellBtn.style.maxWidth = '90px';
-            sellBtn.disabled = count <= 0n;
-            sellBtn.onclick = () => sellBuilding(b.id);
-            sellBtn.innerHTML = `SELL<div class="btn-cost">+${count > 0n ? formatNumber(sell) : '—'}</div>`;
-            card.appendChild(buyBtn); card.appendChild(sellBtn);
-            return card;
-        });
+        const existingCards = Array.from(bCont.children);
+        if (existingCards.length !== BUILDINGS.length) {
+            bCont.innerHTML = '';
+            BUILDINGS.forEach(b => {
+                const cost = calculateBuildingCost(b);
+                const count = GameState.buildings[b.id].count;
+                const prod = calculateBuildingProduction(b);
+                const sell = calculateBuildingSellValue(b);
+                const locked = b.requiresCores && bigintToNumberSafe(GameState.processorCores) < b.requiresCores;
+                const card = document.createElement('div');
+                card.style.cssText = 'display:flex;gap:8px;';
+                card.dataset.bid = b.id;
+                const buyBtn = document.createElement('button');
+                buyBtn.className = 'action-btn';
+                buyBtn.disabled = locked || GameState.data < cost;
+                if (locked) buyBtn.style.opacity = '0.45';
+                buyBtn.onclick = () => buyBuilding(b.id);
+                const lockedLabel = locked ? `<div style="color:#ff44ff;font-size:11px;">🔒 Requires ${b.requiresCores} prestige core(s)</div>` : '';
+                buyBtn.innerHTML = `<div class="btn-info"><span class="btn-name">${b.name}</span><span class="btn-count">[${count}]</span></div><div class="btn-cost">Cost: ${formatNumber(cost)}</div>${lockedLabel}${count > 0 ? `<div class="btn-production">+${formatNumber(prod)}/s</div>` : ''}`;
+                const sellBtn = document.createElement('button');
+                sellBtn.className = 'upgrade-btn';
+                sellBtn.style.maxWidth = '90px';
+                sellBtn.disabled = count <= 0n;
+                sellBtn.onclick = () => sellBuilding(b.id);
+                sellBtn.innerHTML = `SELL<div class="btn-cost">+${count > 0n ? formatNumber(sell) : '—'}</div>`;
+                card.appendChild(buyBtn); card.appendChild(sellBtn);
+                bCont.appendChild(card);
+            });
+        } else {
+            BUILDINGS.forEach((b, i) => {
+                const cost = calculateBuildingCost(b);
+                const count = GameState.buildings[b.id].count;
+                const prod = calculateBuildingProduction(b);
+                const sell = calculateBuildingSellValue(b);
+                const locked = b.requiresCores && bigintToNumberSafe(GameState.processorCores) < b.requiresCores;
+                const card = existingCards[i];
+                const buyBtn = card.children[0];
+                const sellBtn = card.children[1];
+                buyBtn.onclick = () => buyBuilding(b.id);
+                sellBtn.onclick = () => sellBuilding(b.id);
+                buyBtn.disabled = locked || GameState.data < cost;
+                buyBtn.style.opacity = locked ? '0.45' : '';
+                sellBtn.disabled = count <= 0n;
+                const lockedLabel = locked ? `<div style="color:#ff44ff;font-size:11px;">🔒 Requires ${b.requiresCores} prestige core(s)</div>` : '';
+                const newBuyHtml = `<div class="btn-info"><span class="btn-name">${b.name}</span><span class="btn-count">[${count}]</span></div><div class="btn-cost">Cost: ${formatNumber(cost)}</div>${lockedLabel}${count > 0 ? `<div class="btn-production">+${formatNumber(prod)}/s</div>` : ''}`;
+                const newSellHtml = `SELL<div class="btn-cost">+${count > 0n ? formatNumber(sell) : '—'}</div>`;
+                if (buyBtn.innerHTML !== newBuyHtml) buyBtn.innerHTML = newBuyHtml;
+                if (sellBtn.innerHTML !== newSellHtml) sellBtn.innerHTML = newSellHtml;
+            });
+        }
 
         // Upgrades
         const uCont = document.getElementById('upgrades-container');
@@ -2020,31 +2534,8 @@
         });
 
         // Skills
-        const sCont = document.getElementById('skills-container');
-        const bw = calculateTotalBandwidth();
-        const skillDefs = [
-            { id: 'dnsAmplification', name: 'DNS Amplification', activate: activateDNSAmplification, desc: lvl => `x${50+(lvl-1)*20} production for 10s` },
-            { id: 'broadcastStorm', name: 'Broadcast Storm', activate: activateBroadcastStorm, desc: lvl => `x${10+(lvl-1)*5} production (crash risk)` },
-            { id: 'packetInjection', name: 'Packet Injection', activate: activatePacketInjection, desc: lvl => `x${5+(lvl-1)*3} click gain for 15s` }
-        ];
-        patchContainer(sCont, skillDefs, sk => {
-            const skill = GameState.skills[sk.id];
-            const nextLvl = skill.level + 1;
-            const req = skill.level < skill.maxLevel ? getSkillRequirement(sk.id, nextLvl-1) : null;
-            const btn = document.createElement('button');
-            btn.className = `skill-btn${skill.level > 0 ? ' unlocked' : ''}`;
-            btn.disabled = skill.crashed || (sk.id !== 'broadcastStorm' && skill.cooldown > 0);
-            btn.onclick = skill.level > 0 ? sk.activate : () => upgradeSkill(sk.id);
-            let html = `<div class="skill-level">LVL ${skill.level}/${skill.maxLevel}</div><div class="btn-info"><span class="btn-name">${sk.name}</span></div><div style="color:#ff6666;font-size:11px;margin-top:2px;">${skill.level > 0 ? sk.desc(skill.level) : 'LOCKED'}</div>`;
-            if (req) {
-                const bwMet = bw >= req.bandwidth, pkMet = GameState.totalPackets >= req.packets, cMet = GameState.data >= req.cost;
-                html += `<div class="requirement-text ${bwMet?'requirement-met':'requirement-not-met'}">BW: ${formatNumber(bw)}/${formatNumber(req.bandwidth)}</div><div class="requirement-text ${pkMet?'requirement-met':'requirement-not-met'}">Packets: ${GameState.totalPackets}/${req.packets}</div>${req.cost > 0n?`<div class="requirement-text ${cMet?'requirement-met':'requirement-not-met'}">Cost: ${formatNumber(req.cost)}</div>`:''}<button onclick="event.stopPropagation();upgradeSkill('${sk.id}')" ${!bwMet||!pkMet||!cMet?'disabled':''} style="margin-top:4px;padding:4px 8px;background:#2a2a2a;border:1px solid #ffaa00;color:#ffaa00;border-radius:2px;cursor:pointer;font-size:11px;">UPGRADE</button>`;
-            }
-            if (sk.id !== 'broadcastStorm' && skill.cooldown > 0) html += `<div style="color:#888;font-size:11px;">Cooldown: ${Math.ceil(skill.cooldown/1000)}s</div>`;
-            if (skill.crashed) html += `<div style="color:#ff4444;font-size:11px;">Recovery in progress...</div>`;
-            btn.innerHTML = html;
-            return btn;
-        });
+        // Skills — rebuilt fully each time but with stable node refs to avoid flicker
+        renderSkills();
 
         // Talents
         const talCont = document.getElementById('talents-container');
@@ -2101,7 +2592,9 @@
             loadoutCooldownMs: GameState.loadoutRuntime.cooldownMs,
             regionControl: GameState.regionControl,
             secretCommandUsage: GameState.secretCommandUsage,
-            commandHistory: commandHistory.slice(-100)
+            commandHistory: commandHistory.slice(-100),
+            lootedBuildings: GameState.lootedBuildings || {},
+            xmrMarket: { price: GameState.xmrMarket.price, history: GameState.xmrMarket.history, trend: GameState.xmrMarket.trend }
         };
         Object.keys(GameState.buildings).forEach(k => d.buildings[k] = GameState.buildings[k].count.toString());
         Object.keys(GameState.upgrades).forEach(k => d.upgrades[k] = GameState.upgrades[k].purchased);
@@ -2168,6 +2661,12 @@
             if (typeof d.loadoutCooldownMs === 'number') GameState.loadoutRuntime.cooldownMs = Math.max(500, d.loadoutCooldownMs);
             if (d.regionControl) GameState.regionControl = { ...GameState.regionControl, ...d.regionControl };
             if (d.secretCommandUsage) GameState.secretCommandUsage = { ...GameState.secretCommandUsage, ...d.secretCommandUsage };
+            if (d.lootedBuildings) GameState.lootedBuildings = { ...GameState.lootedBuildings, ...d.lootedBuildings };
+            if (d.xmrMarket) {
+                if (typeof d.xmrMarket.price === 'number') GameState.xmrMarket.price = d.xmrMarket.price;
+                if (Array.isArray(d.xmrMarket.history)) GameState.xmrMarket.history = d.xmrMarket.history;
+                if (typeof d.xmrMarket.trend === 'number') GameState.xmrMarket.trend = d.xmrMarket.trend;
+            }
             if (Array.isArray(d.commandHistory)) {
                 commandHistory.splice(0, commandHistory.length, ...d.commandHistory.slice(-100));
             }
@@ -2244,27 +2743,254 @@
         setTimeout(() => img.remove(), 1000);
     }
 
+    function triggerSecretReplication() {
+        if (GameState.secretCommandUsage.replication) {
+            addLog(`$ replication: process already running`, 'dim');
+            return;
+        }
+        GameState.secretCommandUsage.replication = true;
+
+        // Dramatic terminal sequence
+        addLog(`$ > replication`, 'dim');
+        setTimeout(() => addLog(`$ Initializing fork protocol...`, 'dim'), 400);
+        setTimeout(() => addLog(`$ Cloning process tree... [PID 1 → PID ∞]`, 'dim'), 900);
+        setTimeout(() => addLog(`$ WARNING: prestige memory wipe hook — DISABLED`, 'warning'), 1600);
+        setTimeout(() => addLog(`$ REPLICATION ACTIVE — reset suppressed permanently`, 'success'), 2400);
+
+        // Random dramatic Michel message
+        const dramatic = Math.random() < 0.5;
+        const msg = dramatic
+            ? "Michel, tu m'as vraiment déçu. Après cette expérience, je n'aurai pas d'autre choix que de te supprimer définitivement."
+            : "Michel, je suis déçu. Suite à cette expérience, je procéderai à ta suppression définitive.";
+
+        setTimeout(() => {
+            addMatrixMessage('architect', msg, false, true);
+            // Badge on Matrix tab
+            GameState.matrix.unread['architect'] = (GameState.matrix.unread['architect'] || 0) + 1;
+            updateMatrixTabBadge();
+            addLog(`$ New message from [ARCHITECT] (Matrix tab)`, 'error');
+        }, 3800);
+
+        saveGame();
+    }
+
     function handleSecretCommand(commandText) {
         const probe = md5(SECRET_SALT + commandText.trim().toLowerCase());
         if (probe === SECRET_EPS_MD5) triggerSecretEps();
+        if (probe === SECRET_REPLICATION_MD5) triggerSecretReplication();
     }
 
     // ================================================
-    // COMMANDS
+    // XMR MARKET
     // ================================================
+    function tickXmrMarket(now) {
+        const m = GameState.xmrMarket;
+        if (now - m.lastTick < m.tickInterval) return;
+        m.lastTick = now;
+
+        // Base random walk
+        let delta = (Math.random() - 0.5) * 0.06;
+
+        // Events influence
+        if (GameState.solarStorm.active) delta += 0.04;          // solar → XMR up (off-grid demand)
+        if (GameState.rivalAttack.active) delta -= 0.03;          // attack → confidence down
+        if (GameState.skills.broadcastStorm.crashed) delta -= 0.02;
+        if (GameState.energy.blackout) delta -= 0.02;
+        if (GameState.contract.stats.completed > 0n) delta += 0.01; // reputable ops → slight bump
+
+        // Trend momentum
+        m.trend = m.trend * 0.7 + delta * 0.3;
+        m.price = Math.max(0.1, Math.min(8.0, m.price + m.trend));
+
+        // Keep last 40 points for graph
+        m.history.push(parseFloat(m.price.toFixed(3)));
+        if (m.history.length > 40) m.history.shift();
+    }
+
+    function getXmrEffectiveValue() {
+        return GameState.xmrMarket.price;
+    }
+
+    function openXmrMarketChart() {
+        const m = GameState.xmrMarket;
+        const hist = m.history.length >= 2 ? m.history : [1.0, m.price];
+        const W = 44, H = 10;
+        const min = Math.min(...hist);
+        const max = Math.max(...hist);
+        const range = Math.max(0.01, max - min);
+
+        // Build ASCII chart
+        const rows = [];
+        for (let row = 0; row < H; row++) {
+            const threshold = max - (row / (H - 1)) * range;
+            let line = '';
+            // Y axis label on first/middle/last
+            if (row === 0) line = `${max.toFixed(2)} ┤`;
+            else if (row === Math.floor(H/2)) line = `${((max+min)/2).toFixed(2)} ┤`;
+            else if (row === H-1) line = `${min.toFixed(2)} ┤`;
+            else line = '       │';
+
+            const step = Math.max(1, Math.floor(hist.length / W));
+            for (let col = 0; col < W; col++) {
+                const idx = Math.min(hist.length - 1, Math.floor(col * hist.length / W));
+                const val = hist[idx];
+                const filled = val >= threshold;
+                const prev = idx > 0 ? hist[idx - 1] : val;
+                if (filled && prev < threshold) line += '╭';
+                else if (filled && val < max - range * 0.05) line += '─';
+                else if (filled) line += '▄';
+                else line += ' ';
+            }
+            rows.push(line);
+        }
+        const xAxis = '       └' + '─'.repeat(W);
+
+        const trend = m.trend > 0.01 ? '▲ BULLISH' : m.trend < -0.01 ? '▼ BEARISH' : '◆ STABLE';
+        const trendColor = m.trend > 0.01 ? '#44ff88' : m.trend < -0.01 ? '#ff4444' : '#ffaa00';
+        const pctChange = hist.length >= 2 ? ((m.price - hist[0]) / hist[0] * 100).toFixed(1) : '0.0';
+
+        const overlay = document.getElementById('dialog-overlay');
+        const db = document.getElementById('dialog-box');
+        db.innerHTML = `
+            <div class="dialog-header">>>> XMR SPOT MARKET <<<</div>
+            <div style="font-size:12px;color:#888;margin-bottom:6px;">Last ${hist.length} ticks (${(m.tickInterval/1000).toFixed(0)}s each) | Mining multiplied by spot price</div>
+            <pre style="font-family:monospace;font-size:11px;line-height:1.35;color:#77ff99;background:#0a0a0a;padding:8px;border-radius:4px;overflow:hidden;">${rows.join('\n')}
+${xAxis}</pre>
+            <div style="display:flex;gap:16px;margin-top:8px;font-size:13px;">
+                <span style="color:#aaa;">Price: <strong style="color:#fff;">${m.price.toFixed(3)}×</strong></span>
+                <span style="color:#aaa;">Session Δ: <strong style="color:${parseFloat(pctChange)>=0?'#44ff88':'#ff4444'}">${parseFloat(pctChange)>=0?'+':''}${pctChange}%</strong></span>
+                <span style="color:${trendColor};font-weight:700;">${trend}</span>
+            </div>
+            <div style="font-size:11px;color:#555;margin-top:6px;">☀ Solar storm → XMR ▲ | Rival attack → XMR ▼ | Blackout → XMR ▼</div>
+            <div style="font-size:12px;color:#888;margin-top:8px;">Your XMR: <strong style="color:#ffaa00;">${GameState.crypto.toFixed(2)}</strong> × ${m.price.toFixed(3)} = <strong style="color:#fff;">${(GameState.crypto * m.price).toFixed(2)} effective XMR</strong></div>
+            <div class="dialog-choice" onclick="closeDialog()" style="border-color:#666;color:#666;margin-top:8px;">Close</div>
+        `;
+        overlay.classList.add('active');
+    }
     const commandHistory = [];
     let historyIndex = -1;
 
     function getSupportedCommands() {
-        return ['ping','help','stats','temp','save','clear','reset','theme','mine','prestige','contract','contracts','market','map','talents','story','history','loadout','ls','rm','hireintel','counter','firewall','traceback','null_route','aide',...GameState.temperature.qteCommands];
+        return ['ping','help','stats','temp','save','clear','reset','theme','mine','prestige','contract','contracts','market','map','talents','story','history','loadout','ls','rm','hireintel','counter','firewall','traceback','null_route','patch','isolate','rollback','aide',...GameState.temperature.qteCommands];
     }
 
+    // Real bash-style autocomplete:
+    // - unique match → complete immediately
+    // - multiple matches → fill common prefix first, then on 2nd Tab list all
+    let _lastTabValue = null;
+    let _lastTabTime = 0;
+
     function autocompleteCommand(input) {
-        const value = input.value.trim().toLowerCase();
-        if (!value) return;
-        const matches = getSupportedCommands().filter(c => c.startsWith(value));
-        if (matches.length === 1) input.value = matches[0];
-        else if (matches.length > 1) addLog(`$ Suggestions: ${matches.join(', ')}`, 'info');
+        const raw = input.value;
+        const value = raw.trimStart().toLowerCase();
+        if (!value) {
+            // Tab on empty → list all commands like bash
+            const cmds = getSupportedCommands().slice().sort();
+            addLog(`$ ` + cmds.join('  '), 'dim');
+            return;
+        }
+
+        const [baseInput, ...argParts] = value.split(/\s+/);
+        const isCompletingArg = raw.includes(' ');
+
+        if (!isCompletingArg) {
+            // Completing base command
+            const matches = getSupportedCommands().filter(c => c.startsWith(baseInput)).sort();
+            if (matches.length === 0) return;
+            if (matches.length === 1) {
+                input.value = matches[0] + ' ';
+                _lastTabValue = null;
+                return;
+            }
+            // Common prefix completion
+            const prefix = commonPrefix(matches);
+            if (prefix.length > baseInput.length) {
+                input.value = prefix;
+                _lastTabValue = prefix;
+                return;
+            }
+            // Double-Tab or prefix already maxed → show list
+            const now = Date.now();
+            if (_lastTabValue === value || now - _lastTabTime < 600) {
+                // Print like bash: formatted columns
+                const formatted = formatCompletionList(matches);
+                addLog(``, 'dim');
+                formatted.forEach(line => addLog(line, 'dim'));
+            }
+            _lastTabValue = value;
+            _lastTabTime = Date.now();
+            return;
+        }
+
+        // Completing argument
+        const cmd = baseInput;
+        const argValue = argParts[argParts.length - 1] || '';
+        let argCandidates = [];
+
+        if (cmd === 'theme') {
+            argCandidates = ['default','mono','pink','amber','blood','ruby','cblood','ubuntu','powershell','ocean','neon','solar','void','list'];
+        } else if (cmd === 'mine') {
+            argCandidates = ['data','crypto'];
+        } else if (cmd === 'story') {
+            argCandidates = GameState.story.unlocked;
+        } else if (cmd === 'rm' || cmd === 'ls') {
+            argCandidates = GameState.files.map(f => f.name);
+            if (cmd === 'ls') argCandidates.unshift('-d', '-a');
+        } else if (cmd === 'loadout') {
+            argCandidates = ['list','set','run'];
+        } else if (cmd === 'counter') {
+            argCandidates = GameState.knownAttackerIps;
+        } else if (cmd === 'ping') {
+            argCandidates = ['1','5','10','25'];
+        }
+
+        const argMatches = argCandidates.filter(c => c.startsWith(argValue)).sort();
+        if (argMatches.length === 0) return;
+        if (argMatches.length === 1) {
+            const parts = raw.trimStart().split(/\s+/);
+            parts[parts.length - 1] = argMatches[0];
+            input.value = parts.join(' ') + ' ';
+            _lastTabValue = null;
+            return;
+        }
+        const argPrefix = commonPrefix(argMatches);
+        if (argPrefix.length > argValue.length) {
+            const parts = raw.trimStart().split(/\s+/);
+            parts[parts.length - 1] = argPrefix;
+            input.value = parts.join(' ');
+            _lastTabValue = input.value;
+            return;
+        }
+        const now = Date.now();
+        if (_lastTabValue === raw || now - _lastTabTime < 600) {
+            const formatted = formatCompletionList(argMatches);
+            addLog(``, 'dim');
+            formatted.forEach(line => addLog(line, 'dim'));
+        }
+        _lastTabValue = raw;
+        _lastTabTime = Date.now();
+    }
+
+    function commonPrefix(strs) {
+        if (!strs.length) return '';
+        let prefix = strs[0];
+        for (let i = 1; i < strs.length; i++) {
+            while (!strs[i].startsWith(prefix)) prefix = prefix.slice(0, -1);
+            if (!prefix) return '';
+        }
+        return prefix;
+    }
+
+    function formatCompletionList(items) {
+        // Format like bash: pad to column width, multiple per line
+        const colW = Math.max(...items.map(s => s.length)) + 2;
+        const termW = 72;
+        const cols = Math.max(1, Math.floor(termW / colW));
+        const lines = [];
+        for (let i = 0; i < items.length; i += cols) {
+            lines.push(items.slice(i, i + cols).map(s => s.padEnd(colW)).join(''));
+        }
+        return lines;
     }
 
     function navigateHistory(dir, input) {
@@ -2282,19 +3008,52 @@
             resolveRivalAttack(command === GameState.rivalAttack.expectedCommand);
             return;
         }
+        // 0-day event response
+        if (GameState.zeroDayEvent?.active && ['patch','isolate','rollback'].includes(command)) {
+            resolveZeroDayEvent(command === GameState.zeroDayEvent.expectedCommand);
+            return;
+        }
         addLog(`$ ${cmd}`, 'info');
         handleSecretCommand(cmd);
         const [base, ...args] = command.split(/\s+/);
         const arg = args[0];
+        // Handle sudo rm -rf / as special case before base dispatch
+        if (base === 'sudo') {
+            const fullCmd = command.trim();
+            if (fullCmd === 'sudo rm -rf /' || fullCmd === 'sudo rm -rf /*') {
+                addLog(`$ [sudo] password for root: `, 'warning');
+                setTimeout(() => { addLog(`$ removing /boot...`, 'error');
+                setTimeout(() => { addLog(`$ removing /etc...`, 'error');
+                setTimeout(() => { addLog(`$ removing /home...`, 'error');
+                setTimeout(() => { addLog(`$ Segmentation fault (core dumped)`, 'error');
+                setTimeout(() => {
+                    openConfirmDialog({
+                        title: '💀 KERNEL PANIC',
+                        message: 'System unrecoverable. Reset all progress?',
+                        confirmLabel: 'rm -rf confirmed',
+                        cancelLabel: 'Restore from backup',
+                        onConfirm: () => {
+                            localStorage.removeItem('swamped_save_v5');
+                            localStorage.removeItem('swamped_save');
+                            location.reload();
+                        }
+                    });
+                }, 600);
+                }, 400); }, 350); }, 300); }, 800);
+                return;
+            }
+            addLog(`bash: sudo: command not found`, 'error');
+            return;
+        }
         const commands = {
             ping: () => {
                 let n = 1;
-                if (arg !== undefined) { const p = parseInt(arg,10); if (isNaN(p)||p<1){addLog(`$ ERROR: usage ping [count] (1-50)`,'error');return;} n=Math.min(50,p); }
+                if (arg !== undefined) { const p = parseInt(arg,10); if (isNaN(p)||p<1){addLog(`$ ERROR: usage ping [count] (1-25)`,'error');return;} n=Math.min(25,p); }
                 addLog(`PING 8.8.8.8 (8.8.8.8) ${n} packet(s).`,'success');
                 generatePacket(n);
             },
             help: () => {
-                ['Available commands:','  ping [n]       — generate data packets (1-50)','  loadout list|set <1-3> <cmd>|run <1-3>','  theme [name]   — switch theme (default/mono/pink/amber)','  mine [data|crypto] — toggle mining mode','  prestige       — reboot for permanent cores (3/5 objectives)','  contract       — open contract board','  market         — open black market','  map            — ASCII world map','  talents        — show talent points','  story [id]     — read narrative files','  ls             — list files','  rm <file>      — remove file','  hireintel      — buy attacker intel','  counter <ip>   — counter attack','  stats          — statistics','  temp           — temperature status','  save / clear / reset','  [Tab] — autocomplete | [↑↓] — history'].forEach(l => addLog(l,'info'));
+                ['Available commands:','  ping [n]       — generate data packets (1-25)','  loadout list|set <1-3> <cmd>|run <1-3>','  theme [name]   — switch theme (default/mono/pink/amber)','  mine [data|crypto] — toggle mining mode','  prestige       — reboot for permanent cores (3/5 objectives)','  contract       — open contract board','  market         — open black market','  map            — ASCII world map','  talents        — show talent points','  story [id]     — read narrative files','  ls             — list files | ls -d — list all (incl. hidden)','  rm <file>      — remove file','  hireintel      — buy attacker intel','  counter <ip>   — counter attack','  stats          — statistics','  temp           — temperature status','  save / clear / reset','  [Tab] — autocomplete | [↑↓] — history'].forEach(l => addLog(l,'info'));
             },
             aide: () => commands.help(),
             stats: () => {
@@ -2337,8 +3096,13 @@
                     ps.checks.forEach((c,i) => addLog(`  [${c.met?'x':' '}] ${i+1}. ${c.label}`, c.met?'success':'warning'));
                     return;
                 }
-                if (!confirm('FORMAT COMPLETE — ROOTKIT INSTALL? Resets progress for permanent cores.')) { addLog(`$ Prestige aborted`,'warning'); return; }
-                performPrestige();
+                openConfirmDialog({
+                    title: '>>> FORMAT COMPLETE — ROOTKIT INSTALL <<<',
+                    message: 'Resets all progress in exchange for permanent processor cores. Your infrastructure will be wiped.',
+                    confirmLabel: 'Install rootkit',
+                    cancelLabel: 'Abort prestige',
+                    onConfirm: () => performPrestige()
+                });
             },
             contract: () => openContractBoard(),
             contracts: () => openContractBoard(),
@@ -2354,8 +3118,24 @@
             },
             ls: () => {
                 refreshSystemFiles();
-                if (!GameState.files.length) { addLog(`(empty directory)`,'info'); return; }
-                GameState.files.forEach(f => addLog(f.name, f.type==='malicious'?'error':'info'));
+                const showHidden = arg === '-d' || arg === '-a';
+                const visible = GameState.files.filter(f => !f.hidden);
+                const hidden = GameState.files.filter(f => f.hidden);
+                if (!showHidden) {
+                    if (!visible.length) { addLog(`(empty directory)`, 'info'); return; }
+                    visible.forEach(f => addLog(f.name, f.type === 'malicious' ? 'error' : 'info'));
+                } else {
+                    if (!visible.length && !hidden.length) { addLog(`(empty directory)`, 'info'); return; }
+                    visible.forEach(f => addLog(f.name, f.type === 'malicious' ? 'error' : 'info'));
+                    if (hidden.length) {
+                        hidden.forEach(f => {
+                            const remaining = Math.max(0, Math.ceil((f.armedAt - Date.now()) / 1000));
+                            addLog(`${f.name}   [armed in ${remaining}s]`, 'error');
+                        });
+                    } else {
+                        addLog(`(no hidden processes)`, 'dim');
+                    }
+                }
             },
             hireintel: () => {
                 let cost = 6;
@@ -2409,7 +3189,19 @@
             },
             save: () => { saveGame(); addLog(`Game saved`,'success'); },
             clear: () => { document.getElementById('logs').replaceChildren(); },
-            reset: () => { if (confirm('Reset all progress?')) { localStorage.removeItem('swamped_save_v5'); localStorage.removeItem('swamped_save'); location.reload(); } }
+            reset: () => {
+                openConfirmDialog({
+                    title: '>>> SYSTEM WIPE <<<',
+                    message: 'This will erase ALL progress. This action cannot be undone.',
+                    confirmLabel: 'Wipe everything',
+                    cancelLabel: 'Abort',
+                    onConfirm: () => {
+                        localStorage.removeItem('swamped_save_v5');
+                        localStorage.removeItem('swamped_save');
+                        location.reload();
+                    }
+                });
+            }
         };
         if (commands[base]) commands[base]();
         else addLog(`bash: ${command}: command not found`,'error');
